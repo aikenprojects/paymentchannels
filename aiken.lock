@@ -3,12 +3,20 @@
 
 [[requirements]]
 name = "aiken-lang/stdlib"
+<<<<<<< HEAD
 version = "v2.0.0"
+=======
+version = "v2.1.0"
+>>>>>>> c28f397 (Payment channel code)
 source = "github"
 
 [[packages]]
 name = "aiken-lang/stdlib"
+<<<<<<< HEAD
 version = "v2.0.0"
+=======
+version = "v2.1.0"
+>>>>>>> c28f397 (Payment channel code)
 requirements = []
 source = "github"
 

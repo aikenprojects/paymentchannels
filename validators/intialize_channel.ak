@@ -1,180 +1,106 @@
 use aiken/collection/list
-use aiken/crypto.{VerificationKeyHash}
-use cardano/transaction.{OutputReference, Transaction}
 
-// Define the single data structure for managing the channel
+
+// Define the data types for channel initialization
+pub type Party {
+    address: VerificationKeyHash,
+    stake: Int, // Amount of ADA to lock in the channel
+}
+
+pub type InitializeParams {
+    party1: Party,
+    party2: Party,
+}
+
+// The datum represents the initial state of the channel
 pub type ChannelDatum {
-  party1: VerificationKeyHash,
-  party2: VerificationKeyHash,
-  balanceP1: Int,
-  balanceP2: Int,
-  stakeP1: Int,
-  // Amount of ADA locked by party1
-  stakeP2: Int,
-  state: String,
+    party1: VerificationKeyHash, 
+    party2: VerificationKeyHash, 
+    balanceP1: Int, 
+    balanceP2: Int,
 }
 
-// Amount of ADA locked by party2
-
-/// Action Enumerator
+/// Actions Enumerator
 ///  0 -> Initialize Channel
-///  1 -> Transmit Update
-///  2 -> Rebalance
-///  3 -> Initiate Dispute
-///  4 -> Resolve Dispute
-///  5 -> Close Channel
-///  6 -> Timeout
-///  7 -> Abort
-pub type Action =
-  Int
+pub type Action = Int
 
+
+// The redeemer represents the action to initialize the channel
 pub type ChannelRedeemer {
-  action: Action,
-  stake: Int,
-  // For rebalancing and other actions
-  latest_state: Option<ChannelDatum>,
+    action: Action,
+    params: InitializeParams,
 }
 
-// Optional for actions like disputes and closing
-
-// Validator function for managing the channel
+// Validator function for initializing the channel
 validator manage_channel {
-  spend(
-    datum: Option<ChannelDatum>,
-    redeemer: ChannelRedeemer,
-    _utxo: OutputReference,
-    transaction: Transaction,
-  ) {
-    expect Some(datum) = datum
+    spend(
+        datum: ChannelDatum,
+        redeemer: ChannelRedeemer,
+        transaction: Transaction, 
+    ) {
+        // Ensure the datum exists
+        expect Some(datum) = datum
 
-    when redeemer.action is {
-      0 -> initialize_channel(datum, redeemer, transaction.extra_signatories)
-      1 ->
-        transmit_update(
-          datum,
-          redeemer.latest_state,
-          transaction.extra_signatories,
-        )
-      2 -> rebalance(datum, redeemer.stake, transaction.extra_signatories)
-      3 ->
-        initiate_dispute(
-          datum,
-          redeemer.latest_state,
-          transaction.extra_signatories,
-        )
-      4 ->
-        resolve_dispute(
-          datum,
-          redeemer.latest_state,
-          transaction.extra_signatories,
-        )
-      5 ->
-        close_channel(
-          datum,
-          redeemer.latest_state,
-          transaction.extra_signatories,
-        )
-      6 -> timeout(datum, transaction.extra_signatories)
-      7 -> abort(datum, transaction.extra_signatories)
-      _ -> fail
+        // Match the action specified in the redeemer
+        when redeemer.action is {
+            // Case 0: Initialize Channel
+            0 -> {
+                initialize_channel(
+                    datum,
+                    redeemer.params,
+                    transaction.inputs,
+                )
+            }
+
+            // Default case: Fail for any other action
+            _ -> fail
+        }
     }
-  }
-
-  else(_) {
+    else(_) {
     fail
   }
 }
 
+
 fn initialize_channel(
-  datum: ChannelDatum,
-  redeemer: ChannelRedeemer,
-  signatories: List<VerificationKeyHash>,
+    datum: ChannelDatum,                      // Current channel state
+    params: InitializeParams,                // Initialization parameters
+    inputs: List<Input>,                     // List of transaction inputs
+    signatories: List<VerificationKeyHash>,  // Transaction signers
+) {
+    let
+        // Total expected stake from both parties
+        expected_total_stake = params.party1.stake + params.party2.stake
+
+        // Calculate the actual stake provided to the script address
+        provided_stake == inputs
+            .filter((input) -> input.address == ScriptAddress)
+            .fold(0, (sum, input) -> sum + input.value.lovelace)
+
+        // Ensure the parties in the datum match the initialization parameters
+        parties_match = 
+            datum.party1 == params.party1.address &&
+            datum.party2 == params.party2.address
+
+        // Verify signatures for both parties
+        party1_signed = signature_verification(params.party1.address, signatories)
+        party2_signed = signature_verification(params.party2.address, signatories)
+
+        // Validate all conditions for successful initialization
+        valid_initialization = 
+            provided_stake == expected_total_stake &&
+            parties_match &&
+            party1_signed &&
+            party2_signed
+
+    // Fail the transaction if any condition is not met
+    expect True = valid_initialization
+}
+
+// Function to verify a signer exists in the list of signatories
+fn signature_verification(
+    signer: VerificationKeyHash,            // Expected signer
+    signatories: List<VerificationKeyHash>, // Actual transaction signers
 ) -> Bool {
-  let expected_total_stake = datum.stakeP1 + datum.stakeP2
-  datum.balanceP1 + datum.balanceP2 == expected_total_stake && verify_signatures(
-    [datum.party1, datum.party2],
-    signatories,
-  )
-}
-
-// Function to transmit updates
-fn transmit_update(
-  datum: ChannelDatum,
-  latest_state: Option<ChannelDatum>,
-  signatories: List<VerificationKeyHash>,
-) -> Bool {
-  expect Some(new_state) = latest_state
-  datum.balanceP1 + datum.balanceP2 == new_state.balanceP1 + new_state.balanceP2 && verify_signatures(
-    [datum.party1, datum.party2],
-    signatories,
-  )
-}
-
-// Function to rebalance the channel
-fn rebalance(
-  datum: ChannelDatum,
-  stake: Int,
-  signatories: List<VerificationKeyHash>,
-) -> Bool {
-  expect stake > 0
-  expect verify_signatures([datum.party1, datum.party2], signatories)
-  True
-}
-
-// Function to initiate a dispute
-fn initiate_dispute(
-  datum: ChannelDatum,
-  latest_state: Option<ChannelDatum>,
-  signatories: List<VerificationKeyHash>,
-) -> Bool {
-  expect Some(_state) = latest_state
-  verify_signatures([datum.party1, datum.party2], signatories)
-}
-
-// Function to resolve a dispute
-fn resolve_dispute(
-  datum: ChannelDatum,
-  latest_state: Option<ChannelDatum>,
-  signatories: List<VerificationKeyHash>,
-) -> Bool {
-  expect Some(_state) = latest_state
-  expect verify_signatures([datum.party1, datum.party2], signatories)
-  True
-}
-
-// Function to close the channel
-fn close_channel(
-  datum: ChannelDatum,
-  latest_state: Option<ChannelDatum>,
-  signatories: List<VerificationKeyHash>,
-) -> Bool {
-  expect Some(final_state) = latest_state
-  expect verify_signatures([datum.party1, datum.party2], signatories)
-  expect
-    final_state.balanceP1 + final_state.balanceP2 == datum.balanceP1 + datum.balanceP2
-  True
-}
-
-// Function to handle timeouts
-fn timeout(datum: ChannelDatum, signatories: List<VerificationKeyHash>) -> Bool {
-  expect verify_signatures([datum.party1], signatories)
-  True
-}
-
-// Function to abort the channel
-fn abort(datum: ChannelDatum, signatories: List<VerificationKeyHash>) -> Bool {
-  let no_transactions_occurred = True
-  // Implement logic to check for no transactions
-  expect no_transactions_occurred
-  expect verify_signatures([datum.party1, datum.party2], signatories)
-  True
-}
-
-fn verify_signatures(
-  required_signers: List<VerificationKeyHash>,
-  signatories: List<VerificationKeyHash>,
-) -> Bool {
-  let check_signer =
-    fn(signer) { list.has(signatories, signer) }
-  list.all(required_signers, check_signer)
+    list.has(signatories, signer)
 }

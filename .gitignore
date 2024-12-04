@@ -2,3 +2,8 @@
 artifacts/
 # Aiken's project working directory
 build/
+<<<<<<< HEAD
+=======
+# Aiken's default documentation export
+docs/
+>>>>>>> c28f397 (Payment channel code)

@@ -1,11 +1,17 @@
 {
   "preamble": {
+<<<<<<< HEAD
     "title": "aikenprojects/paymentchannels",
     "description": "Aiken contracts for project 'aikenprojects/paymentchannels'",
+=======
+    "title": "amy/payment_channel",
+    "description": "Aiken contracts for project 'amy/payment_channel'",
+>>>>>>> c28f397 (Payment channel code)
     "version": "0.0.0",
     "plutusVersion": "v3",
     "compiler": {
       "name": "Aiken",
+<<<<<<< HEAD
       "version": "v1.1.4+79d0e45"
     },
     "license": "Apache-2.0"
@@ -194,4 +200,11 @@
       ]
     }
   }
+=======
+      "version": "v1.1.7+e2fb28b"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": []
+>>>>>>> c28f397 (Payment channel code)
 }
