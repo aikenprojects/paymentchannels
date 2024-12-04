@@ -1,6 +1,5 @@
 use aiken/collection/list
 
-
 // Define the data types for channel initialization
 pub type Party {
     address: VerificationKeyHash,
@@ -22,16 +21,28 @@ pub type ChannelDatum {
 
 /// Actions Enumerator
 ///  0 -> Initialize Channel
+///  3 -> Transmit Update
+///  4 -> Rebalance
 pub type Action = Int
 
-
-// The redeemer represents the action to initialize the channel
-pub type ChannelRedeemer {
-    action: Action,
-    params: InitializeParams,
+// Additional types for new actions
+pub type TransmitParams {
+    updated_balanceP1: Int,
+    updated_balanceP2: Int,
 }
 
-// Validator function for initializing the channel
+pub type RebalanceParams {
+    additional_fundsP1: Int,
+    additional_fundsP2: Int,
+}
+
+// The redeemer represents the action and associated parameters
+pub type ChannelRedeemer {
+    action: Action,
+    params: any,
+}
+
+// Validator function for channel management
 validator manage_channel {
     spend(
         datum: ChannelDatum,
@@ -47,8 +58,28 @@ validator manage_channel {
             0 -> {
                 initialize_channel(
                     datum,
-                    redeemer.params,
+                    redeemer.params as InitializeParams,
                     transaction.inputs,
+                    transaction.signatories,
+                )
+            }
+
+            // Case 3: Transmit Update
+            3 -> {
+                transmit_update(
+                    datum,
+                    redeemer.params as TransmitParams,
+                    transaction.signatories,
+                )
+            }
+
+            // Case 4: Rebalance
+            4 -> {
+                rebalance(
+                    datum,
+                    redeemer.params as RebalanceParams,
+                    transaction.inputs,
+                    transaction.signatories,
                 )
             }
 
@@ -57,10 +88,11 @@ validator manage_channel {
         }
     }
     else(_) {
-    fail
-  }
+        fail
+    }
 }
 
+// Helper functions
 
 fn initialize_channel(
     datum: ChannelDatum,                      // Current channel state
@@ -95,6 +127,70 @@ fn initialize_channel(
 
     // Fail the transaction if any condition is not met
     expect True = valid_initialization
+}
+
+//function to send updated state among parties
+fn transmit_update(
+    datum: ChannelDatum,                     // Current channel state
+    params: TransmitParams,                  // Parameters for the update
+    signatories: List<VerificationKeyHash>,  // Transaction signers
+) {
+    let
+        // Ensure both balances are non-negative
+        valid_balances = params.updated_balanceP1 >= 0 && params.updated_balanceP2 >= 0
+
+        // Ensure the total balance remains the same
+        total_balance_preserved = 
+            datum.balanceP1 + datum.balanceP2 ==
+            params.updated_balanceP1 + params.updated_balanceP2
+
+        // Verify signatures for both parties
+        party1_signed = signature_verification(datum.party1, signatories)
+        party2_signed = signature_verification(datum.party2, signatories)
+
+        // Validate all conditions for a valid update
+        valid_update = valid_balances && total_balance_preserved && party1_signed && party2_signed
+
+    // Fail the transaction if any condition is not met
+    expect True = valid_update
+}
+
+
+// function to rebalnce funds in case additional fund is required
+fn rebalance(
+    datum: ChannelDatum,                      // Current channel state
+    params: RebalanceParams,                 // Rebalance parameters
+    inputs: List<Input>,                     // List of transaction inputs
+    signatories: List<VerificationKeyHash>,  // Transaction signers
+) {
+    let
+        // Calculate additional funds provided by each party
+        additional_funds_p1 = params.additional_fundsP1
+        additional_funds_p2 = params.additional_fundsP2
+
+        // Calculate total additional funds
+        total_additional_funds = additional_funds_p1 + additional_funds_p2
+
+        // Ensure additional funds are non-negative
+        valid_funds = additional_funds_p1 >= 0 && additional_funds_p2 >= 0
+
+        // Calculate the stake provided to the script address
+        provided_stake == inputs
+            .filter((input) -> input.address == ScriptAddress)
+            .fold(0, (sum, input) -> sum + input.value.lovelace)
+
+        // Ensure the provided stake matches the additional funds
+        stake_matches = provided_stake == total_additional_funds
+
+        // Verify signatures for both parties
+        party1_signed = signature_verification(datum.party1, signatories)
+        party2_signed = signature_verification(datum.party2, signatories)
+
+        // Validate all conditions for a valid rebalance
+        valid_rebalance = valid_funds && stake_matches && party1_signed && party2_signed
+
+    // Fail the transaction if any condition is not met
+    expect True = valid_rebalance
 }
 
 // Function to verify a signer exists in the list of signatories
