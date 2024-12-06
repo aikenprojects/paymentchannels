@@ -8,9 +8,13 @@ pub type ChannelDatum {
   party2: VerificationKeyHash,
   balanceP1: Int,
   balanceP2: Int,
-  stakeP1: Int, // Amount of ADA locked by party1
-  stakeP2: Int, // Amount of ADA locked by party2
+  stakeP1: Int,
+  // Amount of ADA locked by party1
+  stakeP2: Int,
+  state: String,
 }
+
+// Amount of ADA locked by party2
 
 /// Action Enumerator
 ///  0 -> Initialize Channel
@@ -21,13 +25,17 @@ pub type ChannelDatum {
 ///  5 -> Close Channel
 ///  6 -> Timeout
 ///  7 -> Abort
-pub type Action = Int
+pub type Action =
+  Int
 
 pub type ChannelRedeemer {
   action: Action,
-  stake: Int, // For rebalancing and other actions
-  latest_state: Option<ChannelDatum>, // Optional for actions like disputes and closing
+  stake: Int,
+  // For rebalancing and other actions
+  latest_state: Option<ChannelDatum>,
 }
+
+// Optional for actions like disputes and closing
 
 // Validator function for managing the channel
 validator manage_channel {
@@ -41,10 +49,33 @@ validator manage_channel {
 
     when redeemer.action is {
       0 -> initialize_channel(datum, redeemer, transaction.extra_signatories)
-      1 -> transmit_update(datum, redeemer.latest_state, transaction.extra_signatories)
+      1 ->
+        transmit_update(
+          datum,
+          redeemer.latest_state,
+          transaction.extra_signatories,
+        )
       2 -> rebalance(datum, redeemer.stake, transaction.extra_signatories)
-      3 -> initiate_dispute(datum, redeemer.latest_state, transaction.extra_signatories)
-      4 -> resolve_dispute(datum, redeemer.latest_state, transaction.extra_signatories)
+      3 ->
+        initiate_dispute(
+          datum,
+          redeemer.latest_state,
+          transaction.extra_signatories,
+        )
+      4 ->
+        resolve_dispute(
+          datum,
+          redeemer.latest_state,
+          transaction.extra_signatories,
+        )
+      5 ->
+        close_channel(
+          datum,
+          redeemer.latest_state,
+          transaction.extra_signatories,
+        )
+      6 -> timeout(datum, transaction.extra_signatories)
+      7 -> abort(datum, transaction.extra_signatories)
       _ -> fail
     }
   }
@@ -59,9 +90,11 @@ fn initialize_channel(
   redeemer: ChannelRedeemer,
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  let 
-  expected_total_stake = datum.stakeP1 + datum.stakeP2
-  datum.balanceP1 + datum.balanceP2 == expected_total_stake && verify_signatures([datum.party1, datum.party2], signatories)
+  let expected_total_stake = datum.stakeP1 + datum.stakeP2
+  datum.balanceP1 + datum.balanceP2 == expected_total_stake && verify_signatures(
+    [datum.party1, datum.party2],
+    signatories,
+  )
 }
 
 // Function to transmit updates
@@ -71,9 +104,11 @@ fn transmit_update(
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
   expect Some(new_state) = latest_state
-  datum.balanceP1 + datum.balanceP2 == new_state.balanceP1 + new_state.balanceP2 && verify_signatures([datum.party1, datum.party2], signatories)
+  datum.balanceP1 + datum.balanceP2 == new_state.balanceP1 + new_state.balanceP2 && verify_signatures(
+    [datum.party1, datum.party2],
+    signatories,
+  )
 }
-
 
 // Function to rebalance the channel
 fn rebalance(
@@ -81,8 +116,8 @@ fn rebalance(
   stake: Int,
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  expect True = stake > 0
-  expect True =verify_signatures([datum.party1, datum.party2], signatories)
+  expect stake > 0
+  expect verify_signatures([datum.party1, datum.party2], signatories)
   True
 }
 
@@ -92,9 +127,8 @@ fn initiate_dispute(
   latest_state: Option<ChannelDatum>,
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  expect Some(state) = latest_state
+  expect Some(_state) = latest_state
   verify_signatures([datum.party1, datum.party2], signatories)
-  
 }
 
 // Function to resolve a dispute
@@ -103,17 +137,44 @@ fn resolve_dispute(
   latest_state: Option<ChannelDatum>,
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  expect Some(state) = latest_state
-  expect True =verify_signatures([datum.party1, datum.party2], signatories)
+  expect Some(_state) = latest_state
+  expect verify_signatures([datum.party1, datum.party2], signatories)
+  True
+}
+
+// Function to close the channel
+fn close_channel(
+  datum: ChannelDatum,
+  latest_state: Option<ChannelDatum>,
+  signatories: List<VerificationKeyHash>,
+) -> Bool {
+  expect Some(final_state) = latest_state
+  expect verify_signatures([datum.party1, datum.party2], signatories)
+  expect
+    final_state.balanceP1 + final_state.balanceP2 == datum.balanceP1 + datum.balanceP2
+  True
+}
+
+// Function to handle timeouts
+fn timeout(datum: ChannelDatum, signatories: List<VerificationKeyHash>) -> Bool {
+  expect verify_signatures([datum.party1], signatories)
+  True
+}
+
+// Function to abort the channel
+fn abort(datum: ChannelDatum, signatories: List<VerificationKeyHash>) -> Bool {
+  let no_transactions_occurred = True
+  // Implement logic to check for no transactions
+  expect no_transactions_occurred
+  expect verify_signatures([datum.party1, datum.party2], signatories)
   True
 }
 
 fn verify_signatures(
-    required_signers: List<VerificationKeyHash>,
-    signatories: List<VerificationKeyHash>,
+  required_signers: List<VerificationKeyHash>,
+  signatories: List<VerificationKeyHash>,
 ) -> Bool {
-    let check_signer = fn(signer) {
-        list.has(signatories, signer)
-    }
-    list.all(required_signers, check_signer)
+  let check_signer =
+    fn(signer) { list.has(signatories, signer) }
+  list.all(required_signers, check_signer)
 }
