@@ -1,0 +1,14 @@
+{
+    "constructor": 0,
+    "fields": [
+        {
+            "party1": "",
+            "party2": "",
+            "balance1": 5000000,
+            "balance2": 5000000,
+            "sequence_number": 0,
+            "settlement_requested": false,
+            "created_slot": 
+        }
+    ]
+}
