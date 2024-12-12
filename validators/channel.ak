@@ -80,11 +80,17 @@ fn validate_initial_deposit(
       IntervalBound { bound_type: Finite(n), .. } -> n
       _ -> 0
     }
-  datum.balance1 >= params.min_amount && datum.balance2 >= params.min_amount && // Verify minimum amounts
-  datum.created_slot == current_slot && // Verify initial slot is set   // Use POSIX time  -- verifiability 
-  !datum.settlement_requested && // Verify settlement not requested
-  datum.sequence_number == 0
-  // Verify sequence starts at 0
+  and {
+    // Verify minimum amounts
+    datum.balance1 >= params.min_amount,
+    datum.balance2 >= params.min_amount,
+    // Verify initial slot is set   // Use POSIX time  -- verifiability 
+    datum.created_slot == current_slot,
+    // Verify settlement not requested
+    !datum.settlement_requested,
+    // Verify sequence starts at 0
+    datum.sequence_number == 0,
+  }
 }
 
 fn validate_update(
@@ -94,12 +100,18 @@ fn validate_update(
   sequence_number: Int,
   tx_info: Transaction,
 ) -> Bool {
-  must_be_signed_by(tx_info, [datum.party1, datum.party2]) && // Verify the update is signed by both parties
-  sequence_number > datum.sequence_number && // Verify sequence number increases
-  new_balance1 >= 0 && new_balance2 >= 0 && // Verify balances are non-negative
-  new_balance1 + new_balance2 == datum.balance1 + datum.balance2 && // Verify total balance is preserved
-  !datum.settlement_requested
-  // Verify settlement not requested
+  and {
+    // Verify the update is signed by both parties
+    must_be_signed_by(tx_info, [datum.party1, datum.party2]),
+    // Verify sequence number increases
+    sequence_number > datum.sequence_number,
+    // Verify balances are non-negative
+    new_balance1 >= 0 && new_balance2 >= 0,
+    // Verify total balance is preserved
+    new_balance1 + new_balance2 == datum.balance1 + datum.balance2,
+    // Verify settlement not requested
+    !datum.settlement_requested,
+  }
 }
 
 fn validate_settlement(
@@ -109,17 +121,22 @@ fn validate_settlement(
   sequence_number: Int,
   tx_info: Transaction,
 ) -> Bool {
-  // Verify request is signed by either party
-  (
+  and {
+    // Verify request is signed by either party
     must_be_signed_by(tx_info, [datum.party1]) || must_be_signed_by(
       tx_info,
       [datum.party2],
-    )
-  ) && sequence_number == datum.sequence_number && // Verify sequence number matches
-  final_balance1 == datum.balance1 && final_balance2 == datum.balance2 && // Verify final balances match current state
-  !datum.settlement_requested && // Verify settlement not already requested
-  datum.settlement_requested == True
-  // Update settlement requested flag
+    ),
+    // Verify sequence number matches
+    sequence_number == datum.sequence_number,
+    // Verify final balances match current state
+    final_balance1 == datum.balance1,
+    final_balance2 == datum.balance2,
+    // Verify settlement not already requested
+    !datum.settlement_requested,
+    // Update settlement requested flag
+    datum.settlement_requested == True,
+  }
 }
 
 fn validate_close(
@@ -132,10 +149,14 @@ fn validate_close(
       IntervalBound { bound_type: Finite(n), .. } -> n
       _ -> 0
     }
-  datum.settlement_requested || current_slot >= datum.created_slot + params.timeout_slots && // Can only close if settlement was requested or timeout reached
-  must_be_signed_by(tx_info, [datum.party1, datum.party2]) && // Must be signed by both parties
-  verify_final_payments(tx_info, datum)
-  // Verify outputs pay correct amounts to each party
+  and {
+    // Can only close if settlement was requested or timeout reached
+    datum.settlement_requested || current_slot >= datum.created_slot + params.timeout_slots,
+    // Must be signed by both parties
+    must_be_signed_by(tx_info, [datum.party1, datum.party2]),
+    // Verify outputs pay correct amounts to each party
+    verify_final_payments(tx_info, datum),
+  }
 }
 
 fn must_be_signed_by(
