@@ -78,7 +78,7 @@ validator manage_payment_channel(params: PaymentChannelParams) {
     DisputeInitiation ->
       initiate_dispute(
         datum,
-        params,
+        signed_utxos,
         transaction.extra_signatories,
       )
     DisputeResolution ->
@@ -141,27 +141,54 @@ fn transmit_transaction_update(
 }
 
 // Function to initiate a dispute
-//list of signed utxos, verify that initiated party 
+// Initiate a dispute by verifying signed transactions from the opposing party
 fn initiate_dispute(
   datum: ChannelDatum,
-  latest_state: Option<ChannelDatum>,
-  signatories: List<VerificationKeyHash>,
+  signed_utxos: List<Transaction>, // List of signed transactions to verify
+  signatories: List<VerificationKeyHash>, // Signatories to verify
 ) -> Bool {
-  expect Some(_state) = latest_state
+  // Check if the initiator is one of the channel parties
   verify_signatures([datum.party1, datum.party2], signatories)
+  
+  // Verify that the signed UTXOs belong to the other party
+  let valid_utxos =
+    fn(tx: Transaction) {
+      let tx_signers = tx.extra_signatories
+      verify_signatures([datum.party1, datum.party2], tx_signers) &&
+      !list.has(tx_signers, signatories[0]) // Ensure the UTXOs were signed by the opposing party
+    }
+  
+  // All UTXOs must be valid for the dispute to proceed
+  list.all(signed_utxos, valid_utxos)
 }
 
-// Function to resolve a dispute
-// based on the utxo and signatures funds will be released
+// Resolve a dispute by determining the valid state and transferring funds
 fn resolve_dispute(
   datum: ChannelDatum,
-  latest_state: Option<ChannelDatum>,
-  signatories: List<VerificationKeyHash>,
+  signed_utxos: List<Transaction>, // Signed UTXOs from both parties
+  signatories: List<VerificationKeyHash>, // Signatories of the dispute resolution
 ) -> Bool {
-  expect Some(_state) = latest_state
-  expect verify_signatures([datum.party1, datum.party2], signatories)
-  True
+  // Ensure both parties have signed the resolution
+  verify_signatures([datum.party1, datum.party2], signatories)
+
+  // Extract the latest valid state from the signed UTXOs
+  let latest_state =
+    list.fold(signed_utxos, None, fn(acc: Option<ChannelDatum>, tx: Transaction) {
+      let tx_output = tx.outputs[0] // Assume the first output contains the channel state
+      match tx_output.datum {
+        Some(new_datum) if new_datum.sequence_no > datum.sequence_no -> Some(new_datum)
+        _ -> acc
+      }
+    })
+
+  // If a valid state is found, update the balances and reset settlement
+  expect Some(new_datum) = latest_state
+  new_datum.balanceP1 >= 0 &&
+  new_datum.balanceP2 >= 0 &&
+  new_datum.sequence_no > datum.sequence_no &&
+  not new_datum.settlement_requested
 }
+
 
 fn settle_payment_channel(
   datum: ChannelDatum,  // Current state of the channel
