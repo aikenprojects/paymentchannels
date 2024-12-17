@@ -31,8 +31,11 @@ pub type Action {
     new_balance1: Int,
     new_balance2: Int,
   }
-  DisputeInitiation
-  DisputeResolution
+  Dispute { 
+  signed_utxos: List<Transaction>, 
+  signatories: List<VerificationKeyHash> 
+  }
+
   SettlePayment{
     final_balance1: Int,
     final_balance2: Int,
@@ -57,7 +60,7 @@ validator manage_payment_channel(params: PaymentChannelParams) {
     _utxo: OutputReference,
     transaction: Transaction,
   ) {
-    expect Some(datum) = datum
+    // expect Some(datum) = datum
     when redeemer.action is {
       InitializeChannel ->
         initialize_channel(
@@ -67,48 +70,48 @@ validator manage_payment_channel(params: PaymentChannelParams) {
           transaction.extra_signatories,
         )
 
-      Validate_update{new_balance1, new_balance2} -> transmit_transaction_update(
+      ValidateUpdate{new_balance1, new_balance2} -> 
+        transmit_transaction_update(
           datum,
           new_balance1,
           new_balance2,
-          context,
+          transaction.extra_signatories,
           params,
         )
-  
-    DisputeInitiation ->
-      initiate_dispute(
-        datum,
-        signed_utxos,
-        transaction.extra_signatories,
-      )
-    DisputeResolution ->
-      resolve_dispute(
-        datum,
-        params,
-        transaction.extra_signatories,
-      )
-    
-      SettlePayment -> settle_payment_channel(
-        datum
-        final_balance1, 
-        final_balance2,
-        context,
-        signatories, 
-        params,
+
+      
+      Dispute { signed_utxos, signatories } ->
+        handle_dispute(datum, signed_utxos, signatories)
+
+     
+
+
+      SettlePayment{final_balance1, final_balance2, block_height} -> 
+        settle_payment_channel(
+          datum,
+          final_balance1, 
+          final_balance2,
+          context,
+          transaction.extra_signatories, 
+          params,
         )
-   ChannelClosure -> close_channel(datum,params, context, transaction.extra_signatories,
-    )
-    
-    ChannelAbort -> abort(datum, transaction.extra_signatories)
-     _ -> fail
-     else(_) {
-      fail
-   }
-   
- else(_) {
-    fail
+
+      ChannelClosure -> 
+        close_channel(
+          datum,
+          context,
+          params,
+          transaction.extra_signatories,
+        )
+
+      ChannelAbort -> 
+        abort(datum, transaction.extra_signatories)
+
+      _ -> fail // This acts as the default "else" case
+    }
   }
- }
+}
+
 
 fn initialize_channel(
   datum: Option<ChannelDatum>,
@@ -127,66 +130,65 @@ fn initialize_channel(
 
 // Function to transmit updates
 fn transmit_transaction_update(
-  datum: ChannelDatum,
-  context: ScriptContext,
+  datum: Option<ChannelDatum>,
+  new_balance1: Int,
+  new_balance2: Int,
+  signatories: List<VerificationKeyHash>,
   params: PaymentChannelParams,
+ 
 ) -> Bool {
-  verify_signatures(context, [datum.party1, datum.party2]) &&
-  params.channel_state && //// Ensure the channel state is open in the parameters
-  params.new_balance1 >= 0 && params.new_balance2 >= 0 && //Ensure the new balances are valid (non-negative)
-  datum.balanceP1 == params.new_balance1 && datum.balanceP2 == params.new_balance2 // Check if the balances provided match the new balances (for both parties)
-  
-  False //If datum is not present or conditions are not met, return false
-  
+  expect Some(datum) = datum
+  verify_signatures(signatories, [datum.party1, datum.party2]) &&
+  datum.settlement_requested && // Ensure the channel state is open in the parameters
+  new_balance1 >= 0 && new_balance2 >= 0 && // Ensure the new balances are valid (non-negative)
+  datum.balanceP1 == new_balance1 && datum.balanceP2 == new_balance2 // Check if the balances provided match the new balances (for both parties)
 }
 
-// Function to initiate a dispute
-// Initiate a dispute by verifying signed transactions from the opposing party
-fn initiate_dispute(
-  datum: ChannelDatum,
-  signed_utxos: List<Transaction>, // List of signed transactions to verify
-  signatories: List<VerificationKeyHash>, // Signatories to verify
-) -> Bool {
-  // Check if the initiator is one of the channel parties
-  verify_signatures([datum.party1, datum.party2], signatories)
-  
-  // Verify that the signed UTXOs belong to the other party
-  let valid_utxos =
-    fn(tx: Transaction) {
-      let tx_signers = tx.extra_signatories
-      verify_signatures([datum.party1, datum.party2], tx_signers) &&
-      !list.has(tx_signers, signatories[0]) // Ensure the UTXOs were signed by the opposing party
-    }
-  
-  // All UTXOs must be valid for the dispute to proceed
-  list.all(signed_utxos, valid_utxos)
-}
 
-// Resolve a dispute by determining the valid state and transferring funds
-fn resolve_dispute(
-  datum: ChannelDatum,
-  signed_utxos: List<Transaction>, // Signed UTXOs from both parties
-  signatories: List<VerificationKeyHash>, // Signatories of the dispute resolution
+fn handle_dispute(
+  datum: ChannelDatum,                    // Current state of the channel
+  signed_utxos: List<Transaction>,         // Off-chain signed transactions as evidence
+  signatories: List<VerificationKeyHash>, // Signatures presented for verification
+  context: ScriptContext,                 // Transaction context
 ) -> Bool {
-  // Ensure both parties have signed the resolution
-  verify_signatures([datum.party1, datum.party2], signatories)
+  // Verify the signatures belong to both channel parties
+  verify_signatures([datum.party1, datum.party2], signatories) &&
 
-  // Extract the latest valid state from the signed UTXOs
-  let latest_state =
-    list.fold(signed_utxos, None, fn(acc: Option<ChannelDatum>, tx: Transaction) {
-      let tx_output = tx.outputs[0] // Assume the first output contains the channel state
-      match tx_output.datum {
-        Some(new_datum) if new_datum.sequence_no > datum.sequence_no -> Some(new_datum)
-        _ -> acc
+  // Ensure all provided UTXOs are valid and signed by at least one party
+  list.all(signed_utxos, fn(tx: Transaction) {
+    // tx_signers == tx.extra_signatories
+    verify_signatures([datum.party1, datum.party2], tx.extra_signatories)
+  }) &&
+
+  // Extract the latest state by comparing sequence numbers
+let latest_state = list.foldl(signed_utxos, None, fn( tx: Transaction, acc: Option<ChannelDatum>) {
+  match tx.outputs.head().datum {
+    Some(new_datum) ==
+      if acc.is_none() || new_datum.sequence_no > acc.unwrap().sequence_no {
+        Some(new_datum)  // Return updated accumulator
+      } else {
+        acc  // Keep the current accumulator if no datum
       }
-    })
+    None ==
+      acc  // If no datum is present, keep the current accumulator
+  }
+})
 
-  // If a valid state is found, update the balances and reset settlement
-  expect Some(new_datum) = latest_state
-  new_datum.balanceP1 >= 0 &&
-  new_datum.balanceP2 >= 0 &&
-  new_datum.sequence_no > datum.sequence_no &&
-  not new_datum.settlement_requested
+
+
+match latest_state {
+  Some(new_datum) ==
+    new_datum.sequence_no > datum.sequence_no &&           // Sequence number progresses
+    new_datum.balanceP1 >= 0 && new_datum.balanceP2 >= 0 && // Balances are valid
+    (
+      (new_datum.balanceP1 + new_datum.balanceP2 == datum.balanceP1 + datum.balanceP2) || 
+      (new_datum.balanceP1 + new_datum.balanceP2 == datum.balanceP2 + datum.balanceP1)
+    ) && // Allow roles to interchange while maintaining total balance
+    !new_datum.settlement_requested && // Ensure no settlement flag is set
+    settle_payment_channel(new_datum, new_datum.balanceP1, new_datum.balanceP2, context, signatories, datum.params)
+    
+    false
+}
 }
 
 
