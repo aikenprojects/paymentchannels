@@ -108,42 +108,4 @@ import {Blockfrost,
     if (error instanceof Error) return { type: "error", error: error };
     return { type: "error", error: new Error(`${JSON.stringify(error)}`) };
   }
-  
-  // const campaigns_utxos = await lucid.utxosAt(campaignsAddress);
-  // const campaign_utxo = campaigns_utxos.find((utxo) => {
-  // if (utxo.datum) {
-  //   console.log("Datum: " + utxo.datum);
-  //   const dat = Data.from(utxo.datum, CFDatum)
-  //   console.log(dat.deadline)
-  //   return utxo}
-  // });
-  
-  const redeemer = Data.to(0n);
-  console.log("Campaign UTXO: " + campaign_utxo);
-  console.log("------------------------------------------------------------------------------------------------------------------------");
-  const tx = await lucid
-  .newTx()
-  .collectFrom([campaign_utxo], redeemer)
-  .attach.SpendingValidator(validator)
-  .pay.ToAddress(bobAddress, {lovelace: 2000000n})
-  .addSigner(bobAddress)
-  .validFrom(Date.now())
-  .complete({});
-  
-  console.log("Tx: " + tx);
-  //  const signedTx = await tx.sign.withWallet().complete();
-  //  const txHash = await signedTx.submit();
-  
-  console.log("TODO BIEN!")
-  // return { type: "ok", data: txHash };
-  return { type: "ok", data: "tx Built!" };
-  }
-  catch (error) {
-  console.log("Error: " + error);
-  if (error instanceof Error) return { type: "error", error: error };
-  return { type: "error", error: new Error(`${JSON.stringify(error)}`) };
-  }
-  };
-  
-  let txHash = await cancel_campaign()
-  console.log("Realized Tx: " + txHash.data);
+ 
