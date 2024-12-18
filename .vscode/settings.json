@@ -1,3 +1,7 @@
 {
+<<<<<<< HEAD
     "editor.formatOnSave": true
+=======
+    "deno.enable": true
+>>>>>>> cbe4635 (typescript file)
 }
