@@ -15,7 +15,7 @@ import {
   validatorToAddress,
 } from "npm:@lucid-evolution/lucid";
 
-import party1_signingKey from "./party1.json" with { type: "json" };
+import party1_signingKey from "./amySkey.json" with { type: "json" };
 import { networkConfig } from "./setting.ts";
 // import { Result } from "./types.ts";
 
@@ -30,26 +30,30 @@ const lucid = await Lucid(
   { presetProtocolParameteres: PROTOCOL_PARAMETERS_DEFAULT },
 );
 
+console.log(party1_signingKey);
+// const party1Signingkey = party1_signingKey;
+// console.log("party1sk: " + party1_signingKey);
+
 const Party1PaymentCredential: Credential = {
   type: "Key",
   hash: "5820d5a5e4bb4baffb3b4de1393a012dccde5113e14c26f2c663dd33485694560d71", //taken from cardano-cli generated verification key hash
 };
 
-// const Party1stakeCredential: Credential = {
-// type: "Key",
-// hash: "8662fe85a22159022d71aebcf4342bcafaa6ede0df2e486a4e751e8e" // taken from cardano-cli generated stake verification key hash
-// };
+// // const Party1stakeCredential: Credential = {
+// // type: "Key",
+// // hash: "8662fe85a22159022d71aebcf4342bcafaa6ede0df2e486a4e751e8e" // taken from cardano-cli generated stake verification key hash
+// // };
 
-const party1Signingkey = party1_signingKey.ed25519;
+// const party1Signingkey = party1_signingKey.ed25519;
 
-console.log("party1sk: " + party1Signingkey);
+// console.log("party1sk: " + party1Signingkey);
 
-lucid.selectWallet.fromPrivateKey(party1Signingkey);
+lucid.selectWallet.fromPrivateKey(party1_signingKey);
 const party1Address = await lucid.wallet().address();
 
 console.log("Address: " + party1Address);
 
-//read validator from blueprint json file created with aiken
+// read validator from blueprint json file created with aiken
 
 const validator = await readValidator();
 
@@ -63,13 +67,12 @@ async function readValidator(): Promise<SpendingValidator> {
   };
 }
 
-const campaignsAddress = validatorToAddress(
-  networkConfig.network,
-  validator,
-  Party1stakeCredential,
-); //Bob's staking credential
+// const campaignsAddress = validatorToAddress(
+//   networkConfig.network,
+//   validator,
+// ); //Bob's staking credential
 
-console.log("Validator Address: " + campaignsAddress);
+// console.log("Validator Address: " + campaignsAddress);
 
 // Create a campaign
 const initialize_channel = async (): Promise<Result<string>> => { //how to get these results ???
