@@ -15,7 +15,9 @@ import {
   validatorToAddress,
 } from "npm:@lucid-evolution/lucid";
 
-import party1_signingKey from "./amySkey.json" with { type: "json" };
+import amy_skey from "./keys/amySkey.json" with { type: "json" };
+import bob_address from "./keys/bobaddr.json" with { type: "json" };
+
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
@@ -30,7 +32,7 @@ const lucid = await Lucid(
   { presetProtocolParameteres: PROTOCOL_PARAMETERS_DEFAULT },
 );
 
-console.log(party1_signingKey);
+// console.log(amy_skey);
 // const party1Signingkey = party1_signingKey;
 // console.log("party1sk: " + party1_signingKey);
 
@@ -39,15 +41,23 @@ const Party1PaymentCredential: Credential = {
   hash: "2070f8488dd696b78a5f23e38d273550e43660526c4b19cba733b488", //taken from cardano-cli generated verification key hash
 };
 
-const privateKey = party1_signingKey.ed25519_sk; // Extract the key value
-console.log("Extracted private key: " + privateKey);
+const amyskey = amy_skey.ed25519_sk; // Extract the key value
+console.log("Extracted private key: " + amyskey);
 
-lucid.selectWallet.fromPrivateKey(privateKey);
+lucid.selectWallet.fromPrivateKey(amyskey);
+const amy_address = await lucid.wallet().address();
+console.log("Amy Address: " + amy_address);
 
-const party1Address = await lucid.wallet().address();
-console.log("Address: " + party1Address);
+const amy_utxo = await lucid.utxosAt(amy_address);
+console.log("Amy Address utxo: ", amy_utxo);
 
-// // read validator from blueprint json file created with aiken
+const bobAddress = bob_address.address; // Extract the key value
+console.log("Extracted bob address: " + bobAddress);
+
+const bob_utxo = await lucid.utxosAt(bobAddress);
+console.log("bob Address utxo: ", bob_utxo);
+
+// // // // read validator from blueprint json file created with aiken
 
 const validator = await readValidator();
 
