@@ -17,7 +17,7 @@ import {
 
 import party1_signingKey from "./amySkey.json" with { type: "json" };
 import { networkConfig } from "./setting.ts";
-// import { Result } from "./types.ts";
+import { Result } from "./types.ts";
 
 const project_path = "C:/Users/LENOVO/payment_channel";
 
@@ -36,24 +36,18 @@ console.log(party1_signingKey);
 
 const Party1PaymentCredential: Credential = {
   type: "Key",
-  hash: "5820d5a5e4bb4baffb3b4de1393a012dccde5113e14c26f2c663dd33485694560d71", //taken from cardano-cli generated verification key hash
+  hash: "2070f8488dd696b78a5f23e38d273550e43660526c4b19cba733b488", //taken from cardano-cli generated verification key hash
 };
 
-// // const Party1stakeCredential: Credential = {
-// // type: "Key",
-// // hash: "8662fe85a22159022d71aebcf4342bcafaa6ede0df2e486a4e751e8e" // taken from cardano-cli generated stake verification key hash
-// // };
+const privateKey = party1_signingKey.ed25519_sk; // Extract the key value
+console.log("Extracted private key: " + privateKey);
 
-// const party1Signingkey = party1_signingKey.ed25519;
+lucid.selectWallet.fromPrivateKey(privateKey);
 
-// console.log("party1sk: " + party1Signingkey);
-
-lucid.selectWallet.fromPrivateKey(party1_signingKey);
 const party1Address = await lucid.wallet().address();
-
 console.log("Address: " + party1Address);
 
-// read validator from blueprint json file created with aiken
+// // read validator from blueprint json file created with aiken
 
 const validator = await readValidator();
 
@@ -66,56 +60,77 @@ async function readValidator(): Promise<SpendingValidator> {
     script: applyDoubleCborEncoding(validator.compiledCode),
   };
 }
+console.log(validator);
 
-// const campaignsAddress = validatorToAddress(
-//   networkConfig.network,
-//   validator,
-// ); //Bob's staking credential
+const channelAddress = validatorToAddress(
+  networkConfig.network,
+  validator,
+  Party1PaymentCredential,
+); //party1's payment address
 
-// console.log("Validator Address: " + campaignsAddress);
+console.log("Validator Address: " + channelAddress);
 
-// Create a campaign
-const initialize_channel = async (): Promise<Result<string>> => { //how to get these results ???
+// Create a payment channel
+const initialize_channel = async (): Promise<Result<string>> => {
   try {
     if (!lucid) throw "Uninitialized Lucid";
-    if (!party1Address) throw "Non defined Bob's address";
-    if (!campaignsAddress) throw "Non defined script address";
+    if (!party1Address) throw "Non defined party1 address";
+    if (!channelAddress) throw "Non defined script address";
 
     const ChannelDatumSchema = Data.Object({
-      party1: Data.Bytes(),
-      party2: Data.Bytes(),
-      balanceP1: Data.Integer(),
-      balanceP2: Data.Integer(),
-      sequence_no: Data.Integer(),
+      party1: Data.Bytes(), // VerificationKeyHash
+      party2: Data.Bytes(), // VerificationKeyHash
+      balance1: Data.Integer(),
+      balance2: Data.Integer(),
+      sequence_number: Data.Integer(),
       settlement_requested: Data.Boolean(),
-      lock_period: Data.Integer(),
+      created_slot: Data.Integer(),
     });
 
     type ChannelDatum = Data.Static<typeof ChannelDatumSchema>;
     const ChannelDatum = ChannelDatumSchema as unknown as ChannelDatum;
 
-    const redeemer = Data.to(
-      new Constr(0, [min_amount, lock_time]), // InitializeChannel action
-    );
+    const paymentChannelUtxos = await lucid.utxosAt(channelAddress);
+    const paymentChannelUtxo = paymentChannelUtxos.find((utxo) => {
+      if (utxo.datum) {
+        console.log("Datum: " + utxo.datum);
+        const dat = Data.from(utxo.datum, ChannelDatum);
+        console.log("Created Slot: " + dat.created_slot);
+        return utxo;
+      }
+    });
 
+    if (!paymentChannelUtxo) {
+      throw new Error("No valid UTXO found for the payment channel");
+    }
+
+    const redeemer = Data.to(0n); // InitialDeposit action
+    console.log("Payment Channel UTXO: " + paymentChannelUtxo);
+    console.log(
+      "------------------------------------------------------------------------------------------------------------------------",
+    );
+    // Create and build the transaction
     const tx = await lucid
       .newTx()
-      .payToContract(paymentChannelAddress, { inline: datumInstance }, {
-        lovelace: 2000000n,
-      })
-      .attachSpendingValidator(validator)
-      .collectFrom(await lucid.wallet().utxos(), redeemer)
-      .addSigner(userAddress)
-      .complete();
+      .collectFrom([paymentChannelUtxo], redeemer)
+      .attach.SpendingValidator(validator)
+      .pay.ToAddress(party1Address, { lovelace: 2000000n })
+      .addSigner(party1Address)
+      .validFrom(Date.now())
+      .complete({});
 
-    const signedTx = await tx.sign().complete();
-    const txHash = await signedTx.submit();
+    console.log("Tx built: " + tx);
+    // const signedTx = await tx.sign.withWallet().complete();
+    // const txHash = await signedTx.submit();
 
-    console.log("Transaction Successful! Tx Hash: " + txHash);
-    return { type: "ok", data: txHash };
+    console.log("Payment Channel Initialized!");
+    return { type: "ok", data: "Tx Built!" };
   } catch (error) {
-    console.error("Error initializing channel:", error);
+    console.log("Error: " + error);
     if (error instanceof Error) return { type: "error", error: error };
     return { type: "error", error: new Error(`${JSON.stringify(error)}`) };
   }
 };
+
+let txHash = await initialize_channel();
+console.log("Realized Tx: " + txHash.data);
