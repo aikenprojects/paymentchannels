@@ -1,7 +1,11 @@
 {
 <<<<<<< HEAD
+<<<<<<< HEAD
     "editor.formatOnSave": true
 =======
     "deno.enable": true
 >>>>>>> cbe4635 (typescript file)
+=======
+    "deno.enable": true
+>>>>>>> b139d3876d90658679d108a3d7e231b938821fe7
 }
