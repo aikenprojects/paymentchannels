@@ -1,12 +1,7 @@
 {
   "preamble": {
-<<<<<<< HEAD
     "title": "aikenprojects/paymentchannels",
     "description": "Aiken contracts for project 'aikenprojects/paymentchannels'",
-=======
-    "title": "amy/payment_channel",
-    "description": "Aiken contracts for project 'amy/payment_channel'",
->>>>>>> c28f397 (Payment channel code)
     "version": "0.0.0",
     "plutusVersion": "v3",
     "compiler": {
