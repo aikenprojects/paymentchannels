@@ -16,9 +16,6 @@ import {
 } from "npm:@lucid-evolution/lucid";
 
 import amy_skey from "./keys/amySkey.json" with { type: "json" };
-import bob_address from "./keys/bobaddr.json" with { type: "json" };
-// import channel_address from "./keys/channeladdress.json" with { type: "json" };
-
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
@@ -32,6 +29,9 @@ const lucid = await Lucid(
     networkConfig.network,
     { presetProtocolParameteres: PROTOCOL_PARAMETERS_DEFAULT },
 );
+console.log("Network: " + networkConfig.network);
+console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
+console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
 
 const amySigningkey = amy_skey.ed25519_sk;
 
@@ -42,22 +42,8 @@ const amy_wallet = await lucid.wallet().address();
 
 console.log("Address: " + amy_wallet);
 
-// const amy_wallet = amy_address.address;
-// console.log("Amy Address: " + amy_wallet);
-
 const amy_utxo = await lucid.utxosAt(amy_wallet);
 console.log("Amy Address utxo: ", amy_utxo);
-
-// const bob_wallet = bob_address.address; // Extract the key value
-// console.log("Extracted bob address: " + bob_wallet);
-
-// const bob_utxo = await lucid.utxosAt(bob_wallet);
-// console.log("bob Address utxo: ", bob_utxo);
-
-// const channel_wallet = channel_address.address; // Extract the key value
-// console.log("Extracted channel address: " + channel_wallet);
-// const channel_utxo = await lucid.utxosAt(channel_wallet);
-// console.log("ChannelAddress utxo: ", channel_utxo);
 
 // // // // // read validator from blueprint json file created with aiken
 
@@ -79,6 +65,7 @@ const channelAddress = validatorToAddress(
     validator,
 );
 console.log("Validator Address: " + channelAddress);
+
 const c_utxo = await lucid.utxosAt(channelAddress);
 console.log("channel Address utxo: ", c_utxo);
 
@@ -86,62 +73,51 @@ console.log("channel Address utxo: ", c_utxo);
 const initialize_channel = async (): Promise<Result<string>> => {
     try {
         if (!lucid) throw "Uninitialized Lucid";
-        if (!amy_wallet) throw "Non defined amy address";
-        if (!channelAddress) throw "Non defined script address";
+        if (!amy_wallet) throw "Undefined Amy's address";
+        if (!channelAddress) throw "Undefined script address";
 
-        const ChannelDatumSchema = Data.Object({
-            party1: Data.Bytes(), // VerificationKeyHash
-            party2: Data.Bytes(), // VerificationKeyHash
-            balance1: Data.Integer(),
-            balance2: Data.Integer(),
-            sequence_number: Data.Integer(),
-            settlement_requested: Data.Boolean(),
-            created_slot: Data.Integer(),
-        });
-
-        type ChannelDatum = Data.Static<typeof ChannelDatumSchema>;
-        const ChannelDatum = ChannelDatumSchema as unknown as ChannelDatum;
-
-        // const paymentChannelUtxos = await lucid.utxosAt(channelAddress);
-        // console.log("all channel utxo:", paymentChannelUtxos);
-
-        //used when you want to spend channel utxos
-
-        // const ChannelUtxo = paymentChannelUtxos.find((utxo) => {
-        //     if (utxo.datum) {
-        //         console.log("channel Datum: " + utxo.datum);
-        //         const dat = Data.from(utxo.datum, ChannelDatum);
-        //         console.log("Created Slot: " + dat.created_slot);
-        //         return utxo;
-        //     }
+        //         // CFDatum -
+        // const DatumSchema = Data.Object({
+        //     party1: Data.Bytes(),
+        //     party2: Data.Bytes(),
+        //     balanceP1: Data.Integer(),
+        //     balanceP2: Data.Integer(),
+        //     stakeP1: Data.Integer(),
+        //     stakeP2: Data.Integer(),
+        //     state: Data.Bytes(),
         // });
 
-        const redeemer = Data.to(0n); // InitialDeposit action
-        // console.log("Payment Channel UTXO: " + ChannelUtxo);
-        // console.log(
-        //  "------------------------------------------------------------------------------------------------------------------------",
-        // );
-        console.log("redeemer:", redeemer);
+        const datum = Data.to(
+            new Constr(0, [
+                "5d20782e35c589a11061291fece1acc90f20edf612555382e0b6dc01", // party1's verification key hash
+                "", // party2's verification key hash (empty for now)
+                5n, // balanceP1
+                0n, // balanceP2
+                3n, // stakeP1
+                0n, // stakeP2
+                "", // state (initialized)
+            ]),
+        );
+        console.log("datum:", datum);
 
         const tx = await lucid
             .newTx()
-            .collectFrom([amy_wallet], redeemer)
-            .attach.SpendingValidator(validator)
-            .pay.ToAddress(channelAddress, { inline: ChannelDatum }, {
+            .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
                 lovelace: 100000n,
             })
-            .validFrom(Date.now())
-            .addSigner(amy_wallet)
-            .complete({});
+            .complete();
 
-        console.log("Tx built: " + tx);
-        // const signedTx = await tx.sign.withWallet().complete();
-        // const txHash = await signedTx.submit();
+        const signedTx = await tx.sign.withWallet().complete();
+        console.log("Tx signed: " + signedTx);
+
+        const txHash = await signedTx.submit();
+        console.log("Tx built: " + txHash);
 
         console.log("Payment Channel Initialized!");
-        return { type: "ok", data: "Tx Built!" };
+
+        return { type: "ok", data: txHash };
     } catch (error) {
-        console.log("Error: " + error);
+        console.error("Error initializing payment channel:", error);
         if (error instanceof Error) return { type: "error", error: error };
         return { type: "error", error: new Error(`${JSON.stringify(error)}`) };
     }
@@ -149,3 +125,6 @@ const initialize_channel = async (): Promise<Result<string>> => {
 
 let txHash = await initialize_channel();
 console.log("Realized Tx: " + txHash.data);
+
+const cam_utxo = await lucid.utxosAt(channelAddress);
+console.log("campaign Address utxo: ", cam_utxo);

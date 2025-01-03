@@ -1,229 +1,164 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
-use aiken/interval.{Finite}
-use cardano/script_context.{ScriptContext}
-use cardano/transaction.{
-  Input, Output, OutputReference, Redeemer, Spend, Transaction, ValidityRange,
-}
+use cardano/transaction.{OutputReference, Transaction}
 
-// Define the single data structure for managing the payment channel 
+// Define the single data structure for managing the channel
 pub type ChannelDatum {
   party1: VerificationKeyHash,
   party2: VerificationKeyHash,
   balanceP1: Int,
   balanceP2: Int,
-  sequence_no: Int,
-  settlement_requested: Bool,
-  lock_period: Int,
+  stakeP1: Int,
+  // Amount of ADA locked by party1
+  stakeP2: Int,
+  state: String,
 }
 
-pub type PaymentChannelParams {
-  min_amount: Int,
-  lock_time: Int,
-  // channel_state: Bool,
-}
+// Amount of ADA locked by party2
 
-//whether channel is open or closed
-
-pub type Action {
-  InitializeChannel
-  ValidateUpdate{
-    new_balance1: Int,
-    new_balance2: Int,
-  }
-  DisputeInitiation
-  DisputeResolution
-  SettlePayment{
-    final_balance1: Int,
-    final_balance2: Int,
-    block_height: Int,
-  }
- 
-  ChannelClosure
-  ChannelAbort
-}
-
+/// Action Enumerator
+///  0 -> Initialize Channel
+///  1 -> Transmit Update
+///  2 -> Rebalance
+///  3 -> Initiate Dispute
+///  4 -> Resolve Dispute
+///  5 -> Close Channel
+///  6 -> Timeout
+///  7 -> Abort
+pub type Action =
+  Int
 
 pub type ChannelRedeemer {
   action: Action,
+  stake: Int,
+  // For rebalancing and other actions
+  latest_state: Option<ChannelDatum>,
 }
 
+// Optional for actions like disputes and closing
 
-validator manage_payment_channel(params: PaymentChannelParams) {
+// Validator function for managing the channel
+validator manage_channel {
   spend(
     datum: Option<ChannelDatum>,
     redeemer: ChannelRedeemer,
-    context: ScriptContext,
     _utxo: OutputReference,
     transaction: Transaction,
   ) {
     expect Some(datum) = datum
+
     when redeemer.action is {
-      InitializeChannel ->
-        initialize_channel(
+      0 -> initialize_channel(datum, redeemer, transaction.extra_signatories)
+      1 ->
+        transmit_update(
           datum,
-          context,
-          params,
+          redeemer.latest_state,
           transaction.extra_signatories,
         )
-
-      Validate_update{new_balance1, new_balance2} -> transmit_transaction_update(
+      2 -> rebalance(datum, redeemer.stake, transaction.extra_signatories)
+      3 ->
+        initiate_dispute(
           datum,
-          new_balance1,
-          new_balance2,
-          context,
-          params,
+          redeemer.latest_state,
+          transaction.extra_signatories,
         )
-  
-    DisputeInitiation ->
-      initiate_dispute(
-        datum,
-        signed_utxos,
-        transaction.extra_signatories,
-      )
-    DisputeResolution ->
-      resolve_dispute(
-        datum,
-        params,
-        transaction.extra_signatories,
-      )
-    
-      SettlePayment -> settle_payment_channel(
-        datum
-        final_balance1, 
-        final_balance2,
-        context,
-        signatories, 
-        params,
+      4 ->
+        resolve_dispute(
+          datum,
+          redeemer.latest_state,
+          transaction.extra_signatories,
         )
-   ChannelClosure -> close_channel(datum,params, context, transaction.extra_signatories,
-    )
-    
-    ChannelAbort -> abort(datum, transaction.extra_signatories)
-     _ -> fail
-     else(_) {
-      fail
-   }
-   
- else(_) {
+      5 ->
+        close_channel(
+          datum,
+          redeemer.latest_state,
+          transaction.extra_signatories,
+        )
+      6 -> timeout(datum, transaction.extra_signatories)
+      7 -> abort(datum, transaction.extra_signatories)
+      _ -> fail
+    }
+  }
+
+  else(_) {
     fail
   }
- }
+}
 
 fn initialize_channel(
-  datum: Option<ChannelDatum>,
-  context: ScriptContext,
-  params: PaymentChannelParams,
+  datum: ChannelDatum,
+  _redeemer: ChannelRedeemer,
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  expect Some(output_datum) = datum
-  output_datum.balanceP1 >= params.min_amount && output_datum.balanceP2 >= params.min_amount && verify_signatures(
-    [output_datum.party1, output_datum.party2],
+  let expected_total_stake = datum.stakeP1 + datum.stakeP2
+  datum.balanceP1 + datum.balanceP2 == expected_total_stake && verify_signatures(
+    [datum.party1, datum.party2],
     signatories,
-  ) && output_datum.settlement_requested == True && // Check to Ensure the channel's settlement state matches the expected channel state      
-  output_datum.lock_period == params.lock_time
-  //  Validate the lock period matches the expected value
+  )
 }
 
 // Function to transmit updates
-fn transmit_transaction_update(
+fn transmit_update(
   datum: ChannelDatum,
-  context: ScriptContext,
-  params: PaymentChannelParams,
+  latest_state: Option<ChannelDatum>,
+  signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  verify_signatures(context, [datum.party1, datum.party2]) &&
-  params.channel_state && //// Ensure the channel state is open in the parameters
-  params.new_balance1 >= 0 && params.new_balance2 >= 0 && //Ensure the new balances are valid (non-negative)
-  datum.balanceP1 == params.new_balance1 && datum.balanceP2 == params.new_balance2 // Check if the balances provided match the new balances (for both parties)
-  
-  False //If datum is not present or conditions are not met, return false
-  
+  expect Some(new_state) = latest_state
+  datum.balanceP1 + datum.balanceP2 == new_state.balanceP1 + new_state.balanceP2 && verify_signatures(
+    [datum.party1, datum.party2],
+    signatories,
+  )
+}
+
+// Function to rebalance the channel
+fn rebalance(
+  datum: ChannelDatum,
+  stake: Int,
+  signatories: List<VerificationKeyHash>,
+) -> Bool {
+  expect stake > 0
+  expect verify_signatures([datum.party1, datum.party2], signatories)
+  True
 }
 
 // Function to initiate a dispute
-// Initiate a dispute by verifying signed transactions from the opposing party
 fn initiate_dispute(
   datum: ChannelDatum,
-  signed_utxos: List<Transaction>, // List of signed transactions to verify
-  signatories: List<VerificationKeyHash>, // Signatories to verify
+  latest_state: Option<ChannelDatum>,
+  signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  // Check if the initiator is one of the channel parties
+  expect Some(_state) = latest_state
   verify_signatures([datum.party1, datum.party2], signatories)
-  
-  // Verify that the signed UTXOs belong to the other party
-  let valid_utxos =
-    fn(tx: Transaction) {
-      let tx_signers = tx.extra_signatories
-      verify_signatures([datum.party1, datum.party2], tx_signers) &&
-      !list.has(tx_signers, signatories[0]) // Ensure the UTXOs were signed by the opposing party
-    }
-  
-  // All UTXOs must be valid for the dispute to proceed
-  list.all(signed_utxos, valid_utxos)
 }
 
-// Resolve a dispute by determining the valid state and transferring funds
+// Function to resolve a dispute
 fn resolve_dispute(
   datum: ChannelDatum,
-  signed_utxos: List<Transaction>, // Signed UTXOs from both parties
-  signatories: List<VerificationKeyHash>, // Signatories of the dispute resolution
+  latest_state: Option<ChannelDatum>,
+  signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  // Ensure both parties have signed the resolution
-  verify_signatures([datum.party1, datum.party2], signatories)
-
-  // Extract the latest valid state from the signed UTXOs
-  let latest_state =
-    list.fold(signed_utxos, None, fn(acc: Option<ChannelDatum>, tx: Transaction) {
-      let tx_output = tx.outputs[0] // Assume the first output contains the channel state
-      match tx_output.datum {
-        Some(new_datum) if new_datum.sequence_no > datum.sequence_no -> Some(new_datum)
-        _ -> acc
-      }
-    })
-
-  // If a valid state is found, update the balances and reset settlement
-  expect Some(new_datum) = latest_state
-  new_datum.balanceP1 >= 0 &&
-  new_datum.balanceP2 >= 0 &&
-  new_datum.sequence_no > datum.sequence_no &&
-  not new_datum.settlement_requested
-}
-
-
-fn settle_payment_channel(
-  datum: ChannelDatum,  // Current state of the channel
-  final_balance1: Int,   // Final balance for party1
-  final_balance2: Int,   // Final balance for party2
-  context: ScriptContext, // Transaction context
-  signatories: List<VerificationKeyHash>, // Signatories to verify
-  params: PaymentChannelParams // Payment channel parameters
-) -> Bool {
-  // Ensure the channel has been requested for settlement
-  expect datum.settlement_requested == True
-  // Ensure the provided balances match the stored balances for both parties
-  expect datum.balanceP1 == final_balance1 // Check if provided balance matches stored balance for party1
-  expect datum.balanceP2 == final_balance2 // Check if provided balance matches stored balance for party2
-  verify_signatures([datum.party1, datum.party2], signatories) && // Verify signatures from both parties to confirm they authorize the settlement
-  final_balance1 >= 0 && final_balance2 >= 0 && // Ensure that both final balances are non-negative
-  final_balance1 + final_balance2 == datum.balanceP1 + datum.balanceP2 &&  // Check that the total sum of both parties balances matches the expected total
-  context.block_height >= datum.lock_period && // Ensure that the lock period has expired and no further actions can be made
-  datum.settlement_requested == False // Settled channel should no longer have the "settlement_requested" flag
+  expect Some(_state) = latest_state
+  expect verify_signatures([datum.party1, datum.party2], signatories)
+  True
 }
 
 // Function to close the channel
 fn close_channel(
-  datum: Option<ChannelDatum>,
-  context: ScriptContext,
-  params: PaymentChannelParams,
+  datum: ChannelDatum,
+  latest_state: Option<ChannelDatum>,
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  expect Some(output_datum) = datum
-  
-  output_datum.channel_state && context.current_time >= params.lock_time && // Ensure the channel is open and lockTime has passed
-  verify_signatures([output_datum.party1, output_datum.party2], signatories) &&    // Verify the signatures from both parties
-  output_datum.balanceP1 + output_datum.balanceP2 == params.balanceP1 + params.balanceP2 && // Ensure the final balances match the initial state balances
-  output_datum.settlement_requested == False && // Close the channel by setting the settlement_requested flag and updating lock period
-  output_datum.lock_period == context.current_time
+  expect Some(final_state) = latest_state
+  expect verify_signatures([datum.party1, datum.party2], signatories)
+  expect
+    final_state.balanceP1 + final_state.balanceP2 == datum.balanceP1 + datum.balanceP2
+  True
+}
+
+// Function to handle timeouts
+fn timeout(datum: ChannelDatum, signatories: List<VerificationKeyHash>) -> Bool {
+  expect verify_signatures([datum.party1], signatories)
+  True
 }
 
 // Function to abort the channel
@@ -243,10 +178,3 @@ fn verify_signatures(
     fn(signer) { list.has(signatories, signer) }
   list.all(required_signers, check_signer)
 }
-
-
-//steps:
-//1. create  key pairs and generate address
-//2. fetch faucets on address
-//3. cli commands on existing saving account code ()
-//4. write commands against each function of our payment channel

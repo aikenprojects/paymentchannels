@@ -1,0 +1,4 @@
+root@69d662206fb7:/workspaces/wallet# cardano-cli address key-hash --payment-verification-key-file amy.vkey
+9f341dab7c970338644eef06f3f13bd10c432cfe481ad8434865c409
+root@69d662206fb7:/workspaces/wallet# cardano-cli address key-hash --payment-verification-key-file sam.vkey
+603cbd6075e3d74cfbab366224b203a40a602e0ca3867814f32302cf
