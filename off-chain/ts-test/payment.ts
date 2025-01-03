@@ -127,7 +127,9 @@ const initialize_channel = async (): Promise<Result<string>> => {
             .newTx()
             .collectFrom([amy_wallet], redeemer)
             .attach.SpendingValidator(validator)
-            .pay.ToAddress(channelAddress, { lovelace: 100000n })
+            .pay.ToAddress(channelAddress, { inline: ChannelDatum }, {
+                lovelace: 100000n,
+            })
             .validFrom(Date.now())
             .addSigner(amy_wallet)
             .complete({});

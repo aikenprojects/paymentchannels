@@ -1,0 +1,14 @@
+{
+  "preamble": {
+    "title": "aikenprojects/paymentchannels",
+    "description": "Aiken contracts for project 'aikenprojects/paymentchannels'",
+    "version": "0.0.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.7+e2fb28b"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": []
+}
