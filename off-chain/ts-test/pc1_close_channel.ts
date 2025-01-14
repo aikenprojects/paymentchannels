@@ -18,6 +18,7 @@ import {
 import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
 
 import amy_skey from "/workspaces/channel/payment_channel/off-chain/keys/amySkey.json" with { type: "json" };
+import bob_skey from "/workspaces/channel/payment_channel/off-chain/keys/bobskey.json" with { type: "json" };
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
@@ -35,6 +36,7 @@ console.log("Network: " + networkConfig.network);
 console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
 console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
 
+//part 1 credentials
 const amySigningkey = amy_skey.ed25519_sk;
 console.log("amy sk: " + amySigningkey);
 
@@ -45,6 +47,17 @@ console.log("Address: " + amy_wallet);
 const amy_utxo = await lucid.utxosAt(amy_wallet);
 console.log("Amy Address utxo: ", amy_utxo);
 
+//party2 credentials
+const bobSigningkey = bob_skey.ed25519_sk;
+console.log("bob sk: " + bobSigningkey);
+
+lucid.selectWallet.fromPrivateKey(bobSigningkey);
+const bob_wallet = await lucid.wallet().address();
+console.log("bob Address: " + bob_wallet);
+
+const bob_utxo = await lucid.utxosAt(bob_wallet);
+console.log("bob Address utxo: ", bob_utxo);
+
 // // // // // read validator from blueprint json file created with aiken
 const validator = await readValidator();
 
@@ -54,7 +67,7 @@ async function readValidator(): Promise<SpendingValidator> {
     //   console.log("extracted reedemer", redeem)
 
     const currentTime = new Date(); 
-    // console.log("Current time: " + currentTime.toLocaleString());
+    console.log("Current time: " + currentTime.toLocaleString());
 
     // Add 5 days to current time (5 days = 5 * 24 * 60 * 60 * 1000 milliseconds)
     const deadlineTime = new Date(currentTime.getTime() + 5 * 24 * 60 * 60 * 1000);
@@ -86,7 +99,7 @@ async function readValidator(): Promise<SpendingValidator> {
     redeemValidator: { 
         type: "PlutusV3",
         script: redeem,
-        params: encodedParams,// Parameters}
+        // params: encodedParams,// Parameters}
     }
   };
 }
@@ -103,9 +116,10 @@ const channelClose = async (): Promise<Result<string>> => {
     try {
         // Fetch UTXOs at the channel address
         const utxos = await lucid.utxosAt(channelAddress);
+        console.log("all channel utxos", utxos)
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
-        const channel_utxo = utxos[0]; // Use the first UTXO
+        const channel_utxo = utxos[2]; // Use the first UTXO
         console.log("Channel UTXO at first index: ", channel_utxo);
 
         // const channel_utxo = utxos.find((utxo) => {
@@ -130,6 +144,8 @@ const channelClose = async (): Promise<Result<string>> => {
         ] = currentDatum.fields;
 
         console.log("Current Sequence Number (from datum):", sequenceNumber);
+        console.log("Current datum time (from datum):", sequenceNumber);
+
 
         // Check if settlement has already been requested
         if (settlementRequested !== 0n) {
@@ -145,44 +161,48 @@ const channelClose = async (): Promise<Result<string>> => {
         console.log("currentTime", currentTime );
         
         // Fetch the parameters from the redeemValidator
-        const redeemParams = validator.redeemValidator.params;
-        const channel_deadline = redeemParams.fields[1];  
+        const Vparams = validator.validator.params;
+        const channel_deadline = Vparams.fields[1];  
         console.log("deadline", channel_deadline)        
         
-        // Compare current time with the createdSlot and the timeout period
-        if (currentTime >= createdSlot + channel_deadline) {
-            throw "Timeout has been reached";
-        }
-        
+        // // Compare current time with the createdSlot and the timeout period
+        // if (currentTime >= channel_deadline) {
+        //     throw "Timeout has been reached";
+        // }
+        const bob_hash = "5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c";
 
         // Create the updated datum marking the channel as closed
         const updatedDatum = new Constr(0, [
             party1,
-            party2,
+            bob_hash,
             balance1,
             balance2,
             sequenceNumber + 1n,
             updatedSettlementRequested,
-            currentTime,  // Transfer the final balance to party1
+            BigInt(currentTime),  // Transfer the final balance to party1
         ]);
 
         console.log("Updated Datum for settlement: ", updatedDatum);
 
                 
-        const redeemer = Data.to(new Constr(0, [3n]));
-
+        const redeemer = Data.to(new Constr(3, []));
         console.log("Redeemer: " + Data.from(redeemer));
+        console.log("Redeemer: " + redeemer);
+        
 
         // Build the transaction to close the channel and settle funds
         const tx = await lucid
             .newTx() 
             .collectFrom([channel_utxo], redeemer)
             .attach.SpendingValidator(validator.validator)
-            .pay.ToAddress(amy_wallet, {lovelace: 3000000n})
+            .pay.ToAddress(amy_wallet, {lovelace: 1000000n})
             .addSigner(amy_wallet)
+            // .addSigner(bob_wallet)
             .validTo(Date.now())
-            .complete();
+            .complete({});
 
+        console.log("Tx: " + tx);
+     
         // Sign and submit the transaction
         const signedTx = await tx.sign.withWallet().complete();
         console.log("Signed channel close transaction:", signedTx);
