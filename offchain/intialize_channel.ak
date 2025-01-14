@@ -87,7 +87,7 @@ validator manage_channel {
 
 fn initialize_channel(
   datum: ChannelDatum,
-  redeemer: ChannelRedeemer,
+  _redeemer: ChannelRedeemer,
   signatories: List<VerificationKeyHash>,
 ) -> Bool {
   let expected_total_stake = datum.stakeP1 + datum.stakeP2

@@ -3,12 +3,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite, IntervalBound}
 use cardano/address.{VerificationKey}
 use cardano/assets.{from_lovelace}
-use cardano/transaction.{Output, OutputReference, Transaction}
-
-pub type PaymentChannelParams {
-  min_amount: Int,
-  timeout_slots: Int,
-}
+use cardano/transaction.{Output, OutputReference, Transaction, ValidityRange}
 
 pub type Action {
   InitialDeposit
@@ -32,7 +27,12 @@ pub type ChannelDatum {
   balance2: Int,
   sequence_number: Int,
   settlement_requested: Bool,
-  created_slot: Int,
+  created_time: Int,
+}
+
+pub type PaymentChannelParams {
+  min_amount: Int,
+  deadline: Int,
 }
 
 validator paymentchannel(params: PaymentChannelParams) {
@@ -72,20 +72,16 @@ validator paymentchannel(params: PaymentChannelParams) {
 
 fn validate_initial_deposit(
   datum: ChannelDatum,
-  tx_info: Transaction,
+  _tx_info: Transaction,
   params: PaymentChannelParams,
 ) -> Bool {
-  let current_slot: Int =
-    when tx_info.validity_range.lower_bound is {
-      IntervalBound { bound_type: Finite(n), .. } -> n
-      _ -> 0
-    }
   and {
     // Verify minimum amounts
     datum.balance1 >= params.min_amount,
     datum.balance2 >= params.min_amount,
     // Verify initial slot is set   // Use POSIX time  -- verifiability 
-    datum.created_slot == current_slot,
+    params.deadline > datum.created_time,
+    //current time should be equal to the data creation time (take only one)
     // Verify settlement not requested
     !datum.settlement_requested,
     // Verify sequence starts at 0
@@ -144,14 +140,12 @@ fn validate_close(
   tx_info: Transaction,
   params: PaymentChannelParams,
 ) -> Bool {
-  let current_slot: Int =
-    when tx_info.validity_range.lower_bound is {
-      IntervalBound { bound_type: Finite(n), .. } -> n
-      _ -> 0
-    }
   and {
     // Can only close if settlement was requested or timeout reached
-    datum.settlement_requested || current_slot >= datum.created_slot + params.timeout_slots,
+    datum.settlement_requested || must_happen_before(
+      tx_info.validity_range,
+      params.deadline,
+    ),
     // Must be signed by both parties
     must_be_signed_by(tx_info, [datum.party1, datum.party2]),
     // Verify outputs pay correct amounts to each party
@@ -167,6 +161,13 @@ fn must_be_signed_by(
     required_signers,
     fn(signer) { list.has(tx_info.extra_signatories, signer) },
   )
+}
+
+fn must_happen_before(range: ValidityRange, lock_expiration_time: Int) -> Bool {
+  when range.upper_bound.bound_type is {
+    Finite(tx_latest_time) -> lock_expiration_time <= tx_latest_time
+    _ -> False
+  }
 }
 
 fn verify_final_payments(tx_info: Transaction, datum: ChannelDatum) -> Bool {
@@ -196,4 +197,3 @@ fn verify_final_payments(tx_info: Transaction, datum: ChannelDatum) -> Bool {
     _ -> False
   }
 }
-// lucid evolution compose 
