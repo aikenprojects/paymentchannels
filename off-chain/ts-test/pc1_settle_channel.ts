@@ -17,12 +17,12 @@ import {
 } from "npm:@lucid-evolution/lucid";
 import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
 
-import amy_skey from "/workspaces/channel/payment_channel/off-chain/keys/amySkey.json" with { type: "json" };
-import bob_skey from "/workspaces/channel/payment_channel/off-chain/keys/bobskey.json" with { type: "json" };
+import amy_skey from "./amySkey.json" with { type: "json" };
+import bob_skey from "./bobskey.json" with { type: "json" };
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
-const project_path = "/workspaces/channel/payment_channel";
+const project_path =networkConfig.workspacePath;
 
 const lucid = await Lucid(
     new Blockfrost(
@@ -64,7 +64,7 @@ console.log("bob Address utxo: ", bob_utxo);
 const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint,): Promise<Result<string>> => {
     try {
 
-        const utxos = await lucid.utxosAt("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkyx9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkqaadq8c");
+        const utxos = await lucid.utxosAt("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s");
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
         const utxo = utxos[1];
@@ -118,7 +118,7 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
         // 6. Create the transaction to update the datum and finalize the settlement
         const tx = await lucid
             .newTx()
-            .pay.ToContract("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkyx9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkqaadq8c", { kind: "inline", value: Data.to(updatedDatum) }, {
+            .pay.ToContract("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s", { kind: "inline", value: Data.to(updatedDatum) }, {
                 lovelace: final_balance1 + final_balance2, // Assuming final balances reflect the total payment
             })
             .complete();

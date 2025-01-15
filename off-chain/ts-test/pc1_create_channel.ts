@@ -17,12 +17,13 @@ import {
 } from "npm:@lucid-evolution/lucid";
 import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
 
-import amy_skey from "/workspaces/channel/payment_channel/off-chain/keys/amySkey.json" with { type: "json" };
-import bob_skey from "/workspaces/channel/payment_channel/off-chain/keys/bobskey.json" with { type: "json" };
+import amy_skey from "./amySkey.json" with { type: "json" };
+import bob_skey from "./bobskey.json" with { type: "json" };
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
-const project_path = "/workspaces/channel/payment_channel";
+
+const project_path = networkConfig.workspacePath;
 
 const lucid = await Lucid(
     new Blockfrost(
@@ -70,7 +71,7 @@ console.log("bob Address utxo: ", bob_utxo);
 const validator = await readValidator();
 
 async function readValidator(): Promise<SpendingValidator> {
-  const raw_validator = JSON.parse(await Deno.readTextFile("/workspaces/channel/payment_channel/plutus.json")).validators[0];
+  const raw_validator = JSON.parse(await Deno.readTextFile(networkConfig.workspacePath+"/plutus.json")).validators[0];
   const redeem = raw_validator.redeemer;
     //   console.log("extracted reedemer", redeem)
 
