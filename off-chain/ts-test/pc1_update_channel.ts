@@ -18,6 +18,7 @@ import {
 import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
 
 import amy_skey from "/workspaces/channel/payment_channel/off-chain/keys/amySkey.json" with { type: "json" };
+import bob_skey from "/workspaces/channel/payment_channel/off-chain/keys/bobskey.json" with { type: "json" };
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
@@ -31,10 +32,8 @@ const lucid = await Lucid(
     networkConfig.network,
     { presetProtocolParameteres: PROTOCOL_PARAMETERS_DEFAULT },
 );
-console.log("Network: " + networkConfig.network);
-console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
-console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
 
+//party1 credentials
 const amySigningkey = amy_skey.ed25519_sk;
 console.log("amy sk: " + amySigningkey);
 
@@ -45,63 +44,24 @@ console.log("Address: " + amy_wallet);
 const amy_utxo = await lucid.utxosAt(amy_wallet);
 console.log("Amy Address utxo: ", amy_utxo);
 
-// // // // // read validator from blueprint json file created with aiken
-const validator = await readValidator();
 
-async function readValidator(): Promise<SpendingValidator> {
-  const raw_validator = JSON.parse(await Deno.readTextFile("/workspaces/channel/payment_channel/plutus.json")).validators[0];
-  const redeem = raw_validator.redeemer;
-    //   console.log("extracted reedemer", redeem)
+//party2 credentials
+const bobSigningkey = bob_skey.ed25519_sk;
+console.log("bob sk: " + bobSigningkey);
 
-    const currentTime = new Date(); 
-    // console.log("Current time: " + currentTime.toLocaleString());
+lucid.selectWallet.fromPrivateKey(bobSigningkey);
+const bob_wallet = await lucid.wallet().address();
+console.log("bob Address: " + bob_wallet);
 
-    // Add 5 days to current time (5 days = 5 * 24 * 60 * 60 * 1000 milliseconds)
-    const deadlineTime = new Date(currentTime.getTime() + 5 * 24 * 60 * 60 * 1000);
+const bob_utxo = await lucid.utxosAt(bob_wallet);
+console.log("bob Address utxo: ", bob_utxo);
 
-    // // Print the deadline in human-readable format
-    // console.log("Deadline time (5 days from now): " + deadlineTime.toLocaleString());
 
-  // Validator Parameters
-  const paymentChannelParams = {
-    minAmount: 1000000n,     // Example minimum amount 
-    Slot: deadlineTime,             // Example timeout in slots
-  };
-  
-  // Helper function to encode parameters into Plutus Data
-  const encodeParams = (params) => {
-    return new Constr(0, [params.minAmount, params.Slot]);
-  };
-
-  // Applying Parameters to the Validator
-  const encodedParams = encodeParams(paymentChannelParams);
-//   console.log("encoded params:", encodedParams);
-
-  return { 
-    validator: {
-        type: "PlutusV3",
-        script: applyDoubleCborEncoding(raw_validator.compiledCode),
-        params: encodedParams,
-    },
-    redeemValidator: { 
-        type: "PlutusV3",
-        script: redeem,
-        params: encodedParams,// Parameters}
-    }
-  };
-}
-// console.log("Validator:", validator.validator);
-
-const channelAddress = validatorToAddress(
-    networkConfig.network,
-    validator.validator,
-);
-console.log("Validator Address: " + channelAddress);
 // Update the Payment Channel
 const update_channel = async (additionalFunds: bigint): Promise<Result<string>> => {
     try {
         // Fetch UTXOs at the channel address
-        const utxos = await lucid.utxosAt(channelAddress);
+        const utxos = await lucid.utxosAt("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkyx9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkqaadq8c");
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
         const utxo = utxos[0]; // Use the first UTXO
@@ -172,7 +132,7 @@ const update_channel = async (additionalFunds: bigint): Promise<Result<string>> 
         // Build the transaction to update the channel
         const tx = await lucid
             .newTx()
-            .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
+            .pay.ToContract("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkyx9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkqaadq8c", { kind: "inline", value: Data.to(updatedDatum) }, {
                 lovelace: utxo.assets.lovelace + additionalFunds, // Adjust total lovelace
             })
             .complete();

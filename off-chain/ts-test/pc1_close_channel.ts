@@ -13,6 +13,7 @@ import {
     PROTOCOL_PARAMETERS_DEFAULT,
     SpendingValidator,
     validatorToAddress,
+    toPublicKey,
     
 } from "npm:@lucid-evolution/lucid";
 import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
@@ -32,17 +33,27 @@ const lucid = await Lucid(
     networkConfig.network,
     { presetProtocolParameteres: PROTOCOL_PARAMETERS_DEFAULT },
 );
-console.log("Network: " + networkConfig.network);
-console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
-console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
+// console.log("Network: " + networkConfig.network);
+// console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
+// console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
+
+const channelPaymentCredential: Credential = {
+    type: "Key",
+    hash: "862a7bc788af2993250f5f2c6c357a969427816159d8b0d15b1038ac"  //taken from cardano-cli generated verification key hash
+  };
+
 
 //part 1 credentials
 const amySigningkey = amy_skey.ed25519_sk;
 console.log("amy sk: " + amySigningkey);
+const amyvkey = toPublicKey(amySigningkey);
+console.log("amy vk: " + amyvkey);
+
 
 lucid.selectWallet.fromPrivateKey(amySigningkey);
 const amy_wallet = await lucid.wallet().address();
 console.log("Address: " + amy_wallet);
+
 
 const amy_utxo = await lucid.utxosAt(amy_wallet);
 console.log("Amy Address utxo: ", amy_utxo);
@@ -50,6 +61,9 @@ console.log("Amy Address utxo: ", amy_utxo);
 //party2 credentials
 const bobSigningkey = bob_skey.ed25519_sk;
 console.log("bob sk: " + bobSigningkey);
+
+const bobvkey = toPublicKey(bobSigningkey);
+console.log("amy vk: " + bobvkey);
 
 lucid.selectWallet.fromPrivateKey(bobSigningkey);
 const bob_wallet = await lucid.wallet().address();
@@ -69,8 +83,8 @@ async function readValidator(): Promise<SpendingValidator> {
     const currentTime = new Date(); 
     console.log("Current time: " + currentTime.toLocaleString());
 
-    // Add 5 days to current time (5 days = 5 * 24 * 60 * 60 * 1000 milliseconds)
-    const deadlineTime = new Date(currentTime.getTime() + 5 * 24 * 60 * 60 * 1000);
+    // Add 5 days to current time (1 days = 5 * 24 * 60 * 60 * 1000 milliseconds)
+    const deadlineTime = new Date(currentTime.getTime() + 1 * 24 * 60 * 60 * 1000);
 
     // // Print the deadline in human-readable format
     // console.log("Deadline time (5 days from now): " + deadlineTime.toLocaleString());
@@ -108,6 +122,7 @@ async function readValidator(): Promise<SpendingValidator> {
 const channelAddress = validatorToAddress(
     networkConfig.network,
     validator.validator,
+    channelPaymentCredential,
 );
 console.log("Validator Address: " + channelAddress);
 
@@ -169,12 +184,12 @@ const channelClose = async (): Promise<Result<string>> => {
         // if (currentTime >= channel_deadline) {
         //     throw "Timeout has been reached";
         // }
-        const bob_hash = "5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c";
+        
 
         // Create the updated datum marking the channel as closed
         const updatedDatum = new Constr(0, [
             party1,
-            bob_hash,
+            party2,
             balance1,
             balance2,
             sequenceNumber + 1n,
@@ -195,8 +210,10 @@ const channelClose = async (): Promise<Result<string>> => {
             .newTx() 
             .collectFrom([channel_utxo], redeemer)
             .attach.SpendingValidator(validator.validator)
-            .pay.ToAddress(amy_wallet, {lovelace: 1000000n})
-            .addSigner(amy_wallet)
+            .pay.ToAddress(amy_wallet, {lovelace: 2000000n})
+            .pay.ToAddress(bob_wallet, {lovelace: 3000000n})
+            .addSigner(bob_wallet)
+            // .addSigner
             // .addSigner(bob_wallet)
             .validTo(Date.now())
             .complete({});
