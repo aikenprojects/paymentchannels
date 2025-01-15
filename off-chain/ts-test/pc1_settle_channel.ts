@@ -17,12 +17,14 @@ import {
 } from "npm:@lucid-evolution/lucid";
 import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
 
+
 import amy_skey from "./amySkey.json" with { type: "json" };
 import bob_skey from "./bobskey.json" with { type: "json" };
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
 const project_path =networkConfig.workspacePath;
+
 
 const lucid = await Lucid(
     new Blockfrost(
@@ -48,6 +50,7 @@ console.log("Amy Address utxo: ", amy_utxo);
 
 
 
+
 //party2 credentials
 const bobSigningkey = bob_skey.ed25519_sk;
 console.log("bob sk: " + bobSigningkey);
@@ -65,6 +68,7 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
     try {
 
         const utxos = await lucid.utxosAt("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s");
+
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
         const utxo = utxos[1];
@@ -75,11 +79,13 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
 
        
 
+
         // // 2. Verify sequence number matches
         // const storedSequenceNumber = currentDatum.fields[6]; // assuming sequence_number is in the 7th field of datum
         // if (sequence_number !== storedSequenceNumber) {
         //     throw new Error("Sequence number mismatch");
         // }
+
 
 
         const storedBalance1 = currentDatum.fields[2]; // balanceP1
@@ -112,13 +118,16 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
             currentDatum.fields[4] + 1n,
             settlementRequested,
             currentDatum.fields[6], 
+
         ]);
         console.log("Updated Datum for Settlement: ", updatedDatum);
 
         // 6. Create the transaction to update the datum and finalize the settlement
         const tx = await lucid
             .newTx()
+
             .pay.ToContract("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s", { kind: "inline", value: Data.to(updatedDatum) }, {
+
                 lovelace: final_balance1 + final_balance2, // Assuming final balances reflect the total payment
             })
             .complete();
@@ -137,8 +146,10 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
     }
 };
 
+
 const final_balance1 = 3000000n; // final balance for party1
 const final_balance2 = 2000000n; // Ensure this is set to a valid `bigint`
+
 
 
 let settlementResult = await validate_settlement(

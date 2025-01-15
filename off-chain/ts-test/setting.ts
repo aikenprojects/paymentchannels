@@ -3,6 +3,7 @@ type NetworkConfig = {
     blockfrostURL: string | undefined;
     blockfrostAPIkey: string | undefined;
     workspacePath: string | undefined;
+
 };
 
 export const networkConfig: NetworkConfig = {
@@ -11,4 +12,5 @@ export const networkConfig: NetworkConfig = {
     blockfrostAPIkey: "preview1HbXrY2YsGblztV4vvPKaqoDUPvzAbMX",
     workspacePath: "/workspaces/Cardano_Testing/paymentchannels",
 };
+
 // project_id: preview1HbXrY2YsGblztV4vvPKaqoDUPvzAbMX
