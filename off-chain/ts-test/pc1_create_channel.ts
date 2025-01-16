@@ -44,7 +44,7 @@ console.log("BlockfrostURL: " + networkConfig.blockfrostURL);
 
 const channelPaymentCredential: Credential = {
     type: "Key",
-    hash: "862a7bc788af2993250f5f2c6c357a969427816159d8b0d15b1038ac"  //taken from cardano-cli generated verification key hash
+    hash: "064228b663fab0364361e6efe5fc60d0de01394aa6e7640cf96f25ba"  //taken from cardano-cli generated verification key hash
   };
 
 //party1 credentials
@@ -77,7 +77,7 @@ const validator = await readValidator();
 
 async function readValidator(): Promise<SpendingValidator> {
 
-  const raw_validator = JSON.parse(await Deno.readTextFile(networkConfig.workspacePath+"/plutus.json")).validators[0];
+  const raw_validator = JSON.parse(await Deno.readTextFile(project_path +"/plutus.json")).validators[0];
   const redeem = raw_validator.redeemer;
     //   console.log("extracted reedemer", redeem)
 
@@ -204,30 +204,38 @@ const initialize_channel = async (): Promise<Result<string>> => {
         // if (currentSequenceNumber !== 0n) throw "Sequence number is not starting at 0.";
 
 
-
         const tx = await lucid
             .newTx()
-            .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
-                lovelace: 2000000n,
-            })
 
             .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
-                lovelace: 2500000n,
+                lovelace: 150000n,
             })
+            .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
+                lovelace: 200000n,
+            })
+            // .addSigner(amy_wallet)
+            // .addSigner(bob_wallet)
             .complete();
         
         console.log("tx:" , tx.toJSON());
         
-        const signedTx = await tx.sign.withWallet().complete();
-        // const bobsignedTx = await tx.sign.withPrivateKey("ed25519_sk1ykvdwdxrgth7t42zqu8svljpsz9ecpf82zt9ue4pt5qcxgztyq9qxfz4dh").complete();
-        // const signedTx = await tx.assemble([amysignedTx, bobsignedTx]).complete();
-        // // const signedTx = await tx.sign.withWallet().complete();
-        // console.log("Tx signed: " + signedTx);
+        const txsize = await tx.min
+
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+
+        // Partially sign the transaction with Bob's private key
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
+        console.log("witness set:", bobSignedWitness);
+
+        // Assemble the transaction with the collected witnesses
+        const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
+
        
+        // Submit the fully signed transaction to the blockchain
         const txHash = await signedTx.submit();
     
-
         console.log("Payment Channel Initialized!");
+        console.log("Payment Channel Initialized! Transaction Hash:", txHash);
 
         return { type: "ok", data: txHash };
     } catch (error) {
