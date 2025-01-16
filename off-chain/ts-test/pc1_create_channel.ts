@@ -44,7 +44,7 @@ console.log("BlockfrostURL: " + networkConfig.blockfrostURL);
 
 const channelPaymentCredential: Credential = {
     type: "Key",
-    hash: "064228b663fab0364361e6efe5fc60d0de01394aa6e7640cf96f25ba"  //taken from cardano-cli generated verification key hash
+    hash: "420cc8a0003b376952d123ba685688e073c1473462e789eeadf4b4ff"  //taken from cardano-cli generated verification key hash
   };
 
 //party1 credentials
@@ -213,13 +213,11 @@ const initialize_channel = async (): Promise<Result<string>> => {
             .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
                 lovelace: 200000n,
             })
-            // .addSigner(amy_wallet)
-            // .addSigner(bob_wallet)
+            .addSigner(amy_wallet)
+            .addSigner(bob_wallet)
             .complete();
         
         console.log("tx:" , tx.toJSON());
-        
-        const txsize = await tx.min
 
         const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
 
