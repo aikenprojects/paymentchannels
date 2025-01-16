@@ -84,19 +84,13 @@ console.log("bob Address utxo: ", bob_utxo);
 const validator = await readValidator();
 
 async function readValidator(): Promise<SpendingValidator> {
-
-  const raw_validator = JSON.parse(await Deno.readTextFile(networkConfig.workspacePath+"/plutus.json")).validators[0];
-
+  const raw_validator = JSON.parse(await Deno.readTextFile("/workspaces/channel/payment_channel/plutus.json")).validators[0];
   const redeem = raw_validator.redeemer;
     //   console.log("extracted reedemer", redeem)
 
-    const currentTime = new Date(); 
-    console.log("Current time: " + currentTime.toLocaleString());
-
-
-    // Add 5 days to current time (1 days = 5 * 24 * 60 * 60 * 1000 milliseconds)
-    const deadlineTime = new Date(currentTime.getTime() + 1 * 24 * 60 * 60 * 1000);
-
+   
+    const currentTime = Date.now(); // console.log("Current time: " + currentTime.toLocaleString());
+    const deadlineTime = BigInt(currentTime +  1000 * 60 * 5); 
 
     // // Print the deadline in human-readable format
     // console.log("Deadline time (5 days from now): " + deadlineTime.toLocaleString());
@@ -134,9 +128,7 @@ async function readValidator(): Promise<SpendingValidator> {
 const channelAddress = validatorToAddress(
     networkConfig.network,
     validator.validator,
-
     channelPaymentCredential,
-
 );
 console.log("Validator Address: " + channelAddress);
 
@@ -150,13 +142,6 @@ const channelClose = async (): Promise<Result<string>> => {
 
         const channel_utxo = utxos[2]; // Use the first UTXO
         console.log("Channel UTXO at first index: ", channel_utxo);
-
-        // const channel_utxo = utxos.find((utxo) => {
-        //     if (utxo.datum) {
-        //       const datum = Data.from(utxo.datum, DatumType);
-        //       return datum.owner === publicKeyHash;
-        //     }
-        //   });
 
         // Retrieve the current state from the UTXO's datum
         const currentDatum = Data.from<Constr>(channel_utxo.datum);
@@ -186,7 +171,7 @@ const channelClose = async (): Promise<Result<string>> => {
         console.log("updatedSettlementRequested", updatedSettlementRequested)
         
         // Define current time separately
-        const currentTime = new Date(); 
+        const currentTime = BigInt(Date.now()); 
         console.log("currentTime", currentTime );
         
         // Fetch the parameters from the redeemValidator
@@ -198,18 +183,17 @@ const channelClose = async (): Promise<Result<string>> => {
         // if (currentTime >= channel_deadline) {
         //     throw "Timeout has been reached";
         // }
-
+        
 
         // Create the updated datum marking the channel as closed
         const updatedDatum = new Constr(0, [
             party1,
             party2,
-
             balance1,
             balance2,
             sequenceNumber + 1n,
             updatedSettlementRequested,
-            BigInt(currentTime),  // Transfer the final balance to party1
+            createdSlot,  // Transfer the final balance to party1
         ]);
 
         console.log("Updated Datum for settlement: ", updatedDatum);
@@ -218,30 +202,35 @@ const channelClose = async (): Promise<Result<string>> => {
         const redeemer = Data.to(new Constr(3, []));
         console.log("Redeemer: " + Data.from(redeemer));
         console.log("Redeemer: " + redeemer);
-        
 
         // Build the transaction to close the channel and settle funds
         const tx = await lucid
             .newTx() 
             .collectFrom([channel_utxo], redeemer)
             .attach.SpendingValidator(validator.validator)
-
             .pay.ToAddress(amy_wallet, {lovelace: 2000000n})
             .pay.ToAddress(bob_wallet, {lovelace: 3000000n})
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
-            // .addSigner
-
-            // .addSigner(bob_wallet)
             .validTo(Date.now())
             .complete({});
 
         console.log("Tx: " + tx);
      
         // Sign and submit the transaction
-        const signedTx = await tx.sign.withWallet().complete();
-        console.log("Signed channel close transaction:", signedTx);
 
+
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+
+        // Partially sign the transaction with Bob's private key
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
+        console.log("witness set:", bobSignedWitness);
+
+        // Assemble the transaction with the collected witnesses
+        const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
+
+       
+        // Submit the fully signed transaction to the blockchain
         const txHash = await signedTx.submit();
 
         console.log("Payment Channel Closed! TxHash: " + txHash);

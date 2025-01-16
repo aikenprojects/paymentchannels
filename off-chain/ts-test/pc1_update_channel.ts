@@ -66,9 +66,7 @@ console.log("bob Address utxo: ", bob_utxo);
 const update_channel = async (additionalFunds: bigint): Promise<Result<string>> => {
     try {
         // Fetch UTXOs at the channel address
-
-        const utxos = await lucid.utxosAt("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s");
-
+        const utxos = await lucid.utxosAt("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkxhc2s75ux0wg6zgknldqh84trsllt24gz3jf7f8x75ezpslph9jd");
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
         const utxo = utxos[0]; // Use the first UTXO
@@ -139,17 +137,24 @@ const update_channel = async (additionalFunds: bigint): Promise<Result<string>> 
         // Build the transaction to update the channel
         const tx = await lucid
             .newTx()
-
-            .pay.ToContract("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s", { kind: "inline", value: Data.to(updatedDatum) }, {
-
+            .pay.ToContract("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkxhc2s75ux0wg6zgknldqh84trsllt24gz3jf7f8x75ezpslph9jd", { kind: "inline", value: Data.to(updatedDatum) }, {
                 lovelace: utxo.assets.lovelace + additionalFunds, // Adjust total lovelace
             })
+            .addSigner(amy_wallet)
+            .addSigner(bob_wallet)
             .complete();
 
         // Sign and submit the transaction
-        const signedTx = await tx.sign.withWallet().complete();
-        console.log("Signed update transaction:", signedTx);
+       
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
+        console.log("witness set:", bobSignedWitness);
 
+        // Assemble the transaction with the collected witnesses
+        const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
+
+       
+        // Submit the fully signed transaction to the blockchain
         const txHash = await signedTx.submit();
 
         console.log("Payment Channel Updated! TxHash: " + txHash);
