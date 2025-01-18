@@ -1,29 +1,18 @@
 import {
-    applyDoubleCborEncoding,
     Blockfrost,
     Constr,
-    Credential,
-    credentialToAddress,
     Data,
-    fromHex,
-    fromText,
-    generatePrivateKey,
     Lucid,
-    LucidEvolution,
     PROTOCOL_PARAMETERS_DEFAULT,
-    SpendingValidator,
-    validatorToAddress,
+   
     
 } from "npm:@lucid-evolution/lucid";
-import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
-
 
 import amy_skey from "./amySkey.json" with { type: "json" };
 import bob_skey from "./bobskey.json" with { type: "json" };
+import {validator, channelAddress} from "./plutus_validator.ts";
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
-
-const project_path =networkConfig.workspacePath;
 
 
 const lucid = await Lucid(
@@ -34,10 +23,11 @@ const lucid = await Lucid(
     networkConfig.network,
     { presetProtocolParameteres: PROTOCOL_PARAMETERS_DEFAULT },
 );
-console.log("Network: " + networkConfig.network);
-console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
-console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
+// console.log("Network: " + networkConfig.network);
+// console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
+// console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
 
+//party1 credentials
 const amySigningkey = amy_skey.ed25519_sk;
 console.log("amy sk: " + amySigningkey);
 
@@ -47,9 +37,6 @@ console.log("Address: " + amy_wallet);
 
 const amy_utxo = await lucid.utxosAt(amy_wallet);
 console.log("Amy Address utxo: ", amy_utxo);
-
-
-
 
 //party2 credentials
 const bobSigningkey = bob_skey.ed25519_sk;
@@ -67,25 +54,23 @@ console.log("bob Address utxo: ", bob_utxo);
 // // Validate Settlement function
 const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint,): Promise<Result<string>> => {
     try {
+        if (!lucid) throw "Uninitialized Lucid";
+        if (!amy_wallet) throw "Undefined Amy's address";
+        if (!bob_wallet) throw "Undefined Bob's address";
+        if (!channelAddress) throw "Undefined script address";
+        
 
-        const utxos = await lucid.utxosAt("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkxhc2s75ux0wg6zgknldqh84trsllt24gz3jf7f8x75ezpslph9jd");
+        const utxos = await lucid.utxosAt(channelAddress);
+
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
-        const utxo = utxos[1];
-        console.log("Using UTXO: ", utxo);
+        const channel_utxo = utxos[utxos.length - 1];
+        console.log("Using UTXO: ", channel_utxo);
 
-        const currentDatum = Data.from<Constr>(utxo.datum);
+        const currentDatum = Data.from<Constr>(channel_utxo.datum);
         console.log("Current Datum: ", currentDatum);
 
-       
-
-        // // 2. Verify sequence number matches
-        // const storedSequenceNumber = currentDatum.fields[6]; // assuming sequence_number is in the 7th field of datum
-        // if (sequence_number !== storedSequenceNumber) {
-        //     throw new Error("Sequence number mismatch");
-        // }
-
-
+    
         const storedBalance1 = currentDatum.fields[2]; // balanceP1
         const storedBalance2 = currentDatum.fields[3]; // balanceP2
         
@@ -119,28 +104,29 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
         ]);
         console.log("Updated Datum for Settlement: ", updatedDatum);
 
-        // 6. Create the transaction to update the datum and finalize the settlement
         const tx = await lucid
             .newTx()
-            .pay.ToContract("addr_test1zp3msuk4z0hsgjsyeps9mey2rgwy5vp4req6d2fv6s79vkxhc2s75ux0wg6zgknldqh84trsllt24gz3jf7f8x75ezpslph9jd", { kind: "inline", value: Data.to(updatedDatum) }, {
+
+            .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
+
                 lovelace: final_balance1 + final_balance2, // Assuming final balances reflect the total payment
             })
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
+            .addSigner(amy_wallet)
+            .addSigner(bob_wallet)
             .complete();
+        
+        console.log("tx:" , tx.toJSON());
+        
 
-    
         const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
-
-        // Partially sign the transaction with Bob's private key
         const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
-        console.log("witness set:", bobSignedWitness);
+        // console.log("witness set:", bobSignedWitness);
 
         // Assemble the transaction with the collected witnesses
         const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
 
-        
-        // Submit the fully signed transaction to the blockchain
         const txHash = await signedTx.submit();
         console.log("Settlement Finalized! TxHash: " + txHash);
 
@@ -152,8 +138,8 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
     }
 };
 
-const final_balance1 = 3000000n; // final balance for party1
-const final_balance2 = 2000000n; // Ensure this is set to a valid `bigint`
+const final_balance1 = 350000n; // final balance for party1
+const final_balance2 = 250000n; // Ensure this is set to a valid `bigint`
 
 
 let settlementResult = await validate_settlement(
