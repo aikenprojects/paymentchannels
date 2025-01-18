@@ -5,11 +5,13 @@ import {
     Lucid,
     PROTOCOL_PARAMETERS_DEFAULT,
    
+   
     
 } from "npm:@lucid-evolution/lucid";
 
 import amy_skey from "./amySkey.json" with { type: "json" };
 import bob_skey from "./bobskey.json" with { type: "json" };
+import {validator, channelAddress} from "./plutus_validator.ts";
 import {validator, channelAddress} from "./plutus_validator.ts";
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
@@ -26,7 +28,11 @@ const lucid = await Lucid(
 // console.log("Network: " + networkConfig.network);
 // console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
 // console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
+// console.log("Network: " + networkConfig.network);
+// console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
+// console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
 
+//party1 credentials
 //party1 credentials
 const amySigningkey = amy_skey.ed25519_sk;
 console.log("amy sk: " + amySigningkey);
@@ -61,15 +67,26 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
         
 
         const utxos = await lucid.utxosAt(channelAddress);
+        if (!lucid) throw "Uninitialized Lucid";
+        if (!amy_wallet) throw "Undefined Amy's address";
+        if (!bob_wallet) throw "Undefined Bob's address";
+        if (!channelAddress) throw "Undefined script address";
+        
+
+        const utxos = await lucid.utxosAt(channelAddress);
 
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
         const channel_utxo = utxos[utxos.length - 1];
         console.log("Using UTXO: ", channel_utxo);
+        const channel_utxo = utxos[utxos.length - 1];
+        console.log("Using UTXO: ", channel_utxo);
 
+        const currentDatum = Data.from<Constr>(channel_utxo.datum);
         const currentDatum = Data.from<Constr>(channel_utxo.datum);
         console.log("Current Datum: ", currentDatum);
 
+    
     
         const storedBalance1 = currentDatum.fields[2]; // balanceP1
         const storedBalance2 = currentDatum.fields[3]; // balanceP2
@@ -108,12 +125,25 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
             .newTx()
 
             .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
+            .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
 
                 lovelace: final_balance1 + final_balance2, // Assuming final balances reflect the total payment
             })
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
+            .addSigner(amy_wallet)
+            .addSigner(bob_wallet)
             .complete();
+        
+        console.log("tx:" , tx.toJSON());
+        
+
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
+        // console.log("witness set:", bobSignedWitness);
+
+        // Assemble the transaction with the collected witnesses
+        const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
         
         console.log("tx:" , tx.toJSON());
         
@@ -135,6 +165,7 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
         return { type: "error", error: new Error(`${JSON.stringify(error)}`) };
     }
 };
+
 
 const final_balance1 = 350000n; // final balance for party1
 const final_balance2 = 250000n; // Ensure this is set to a valid `bigint`
