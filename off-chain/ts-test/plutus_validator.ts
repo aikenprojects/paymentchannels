@@ -12,14 +12,15 @@ const project_path = networkConfig.workspacePath;
 
 const channelPaymentCredential: Credential = {
     type: "Key",
-    hash: "f5ace57d793e03a280d2ca6f56617d7e863be809eea3a760a7c83711"  //taken from cardano-cli generated verification key hash
+    hash: "8ae0f8e435d2d7f11ce99b80633f24489a3d3890ae2c69909c278b11" , //taken from cardano-cli generated verification key hash
   };
 
   // channel keys:
-//   private key ed25519_sk1fevrgy8nzusce0m0rcp6trrfp63fgc5xyw9znn7g0tucz80f6qksvq2k2m
-// public key ed25519_pk132ydttasyykgvv8enltqe0xr7jfu4q4q6gpd5rduhntj43f84q5q93yhmt
-// address key addr_test1vr66eeta0ylq8g5q6t9x74np04lgvwlgp8h28fmq5lyrwygpkmk3j
-// channel hash key f5ace57d793e03a280d2ca6f56617d7e863be809eea3a760a7c83711
+
+  // private key ed25519_sk1uls3ukk9hjuzgd2drp0unt6r3rf690xkvz2jlmzmr8nh5q6t8wkqfmtfuu
+  // public key ed25519_pk1w4h2426w3yq7vsv7l693h6rwhr50ydddt68zutys2pccl7vm42csa3mdjl
+  // address key addr_test1vz9wp78yxhfd0uguaxdcqcely3yf50fcjzhzc6vsnsnckygnl2zc3
+  // channel hash key 8ae0f8e435d2d7f11ce99b80633f24489a3d3890ae2c69909c278b11
 
 // // // // // read validator from blueprint json file created with aiken
 export const validator = await readValidator();
@@ -71,4 +72,4 @@ export const channelAddress = validatorToAddress(
     channelPaymentCredential,
 
 );
-//console.log("Validator Address: " + channelAddress);
+console.log("Validator Address: " + channelAddress);
