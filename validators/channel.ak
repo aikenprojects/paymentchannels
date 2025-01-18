@@ -79,7 +79,7 @@ fn validate_initial_deposit(
     // Verify minimum amounts
     datum.balance1 >= params.min_amount,
     datum.balance2 >= params.min_amount,
-    // Verify initial slot is set   // Use POSIX time  -- verifiability 
+    // Verify initial slot is set   // Use POSIX time  -- verifiability
     params.deadline > datum.created_time,
     //current time should be equal to the data creation time (take only one)
     // Verify settlement not requested
@@ -130,8 +130,6 @@ fn validate_settlement(
     final_balance2 == datum.balance2,
     // Verify settlement not already requested
     !datum.settlement_requested,
-    // Update settlement requested flag
-    datum.settlement_requested == True,
   }
 }
 
