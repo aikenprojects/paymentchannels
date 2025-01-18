@@ -113,8 +113,6 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
             })
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
-            .addSigner(amy_wallet)
-            .addSigner(bob_wallet)
             .complete();
         
         console.log("tx:" , tx.toJSON());

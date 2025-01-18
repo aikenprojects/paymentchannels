@@ -9,6 +9,7 @@ import {
 import amy_skey from "./amySkey.json" with { type: "json" };
 import bob_skey from "./bobskey.json" with { type: "json" };
 import {validator, channelAddress} from "./plutus_validator.ts";
+import {validator, channelAddress} from "./plutus_validator.ts";
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
 
@@ -26,6 +27,10 @@ const lucid = await Lucid(
 // console.log("Network: " + networkConfig.network);
 // console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
 // console.log("BlockfrostURL: " + networkConfig.blockfrostURL);
+// console.log("Network: " + networkConfig.network);
+// console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
+// console.log("BlockfrostURL: " + networkConfig.blockfrostURL);
+
 
 
 
@@ -55,6 +60,8 @@ console.log("bob Address utxo: ", bob_utxo);
 
 console.log("channel address:", validator.validator);
 console.log("channel address:",channelAddress);
+console.log("channel address:", validator.validator);
+console.log("channel address:",channelAddress);
 
 
 
@@ -64,6 +71,7 @@ const initialize_channel = async (): Promise<Result<string>> => {
         if (!lucid) throw "Uninitialized Lucid";
         if (!amy_wallet) throw "Undefined Amy's address";
         if (!bob_wallet) throw "Undefined Bob's address";
+        if (!bob_wallet) throw "Undefined Bob's address";
         if (!channelAddress) throw "Undefined script address";
         
 
@@ -72,6 +80,7 @@ const initialize_channel = async (): Promise<Result<string>> => {
         // console.log("Redeem Validator Params: ", redeemParams.fields[0])
         const minAmount = validParams.fields[0]; 
         console.log("min amount", minAmount)  
+        // const deadline = validParams.fields[1];        
         // const deadline = validParams.fields[1];        
         
         // Fetch UTxOs at the channel address
@@ -99,6 +108,7 @@ const initialize_channel = async (): Promise<Result<string>> => {
         const created_slot = Date.now()
         console.log("Current time: ", created_slot);
         const balanceP1 = 200000n; // balance1
+        const balanceP1 = 200000n; // balance1
 
         // const balanceP2 = 0n; // balance2
         const settlementRequested = 0n; // settlement_requested (false)
@@ -110,6 +120,7 @@ const initialize_channel = async (): Promise<Result<string>> => {
                 "5d20782e35c589a11061291fece1acc90f20edf612555382e0b6dc01", // party1's verification key hash (replace with actual key)
                 "5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c", // party2's verification key hash (empty for now)
                 balanceP1, // balance1
+                BigInt(250000n), // balance2
                 BigInt(250000n), // balance2
                 BigInt(newSequenceNumber), // sequence_number
                 settlementRequested, // settlement_requested (false initially)
@@ -131,18 +142,26 @@ const initialize_channel = async (): Promise<Result<string>> => {
 
             .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
                 lovelace: 200000n,
+                lovelace: 200000n,
             })
             .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
                 lovelace: 250000n,
+                lovelace: 250000n,
             })
-            .addSigner(amy_wallet)
-            .addSigner(bob_wallet)
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
             .complete();
         
         // console.log("tx:" , tx.toJSON());
+        // console.log("tx:" , tx.toJSON());
         
+
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
+        // console.log("witness set:", bobSignedWitness);
+
+        // Assemble the transaction with the collected witnesses
+        const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
 
         const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
         const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
@@ -170,6 +189,7 @@ console.log("Realized Tx: " + txHash.data);
 
 
 const cam_utxo = await lucid.utxosAt(channelAddress);
+console.log("campaign Address utxo: ", cam_utxo);
 console.log("campaign Address utxo: ", cam_utxo);
 
 
