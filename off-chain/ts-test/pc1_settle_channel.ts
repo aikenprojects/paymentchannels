@@ -115,6 +115,8 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
             .addSigner(bob_wallet)
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
+            .addSigner(amy_wallet)
+            .addSigner(bob_wallet)
             .complete();
         
         console.log("tx:" , tx.toJSON());
@@ -137,6 +139,7 @@ const validate_settlement = async ( final_balance1:bigint, final_balance2:bigint
         return { type: "error", error: new Error(`${JSON.stringify(error)}`) };
     }
 };
+
 
 const final_balance1 = 350000n; // final balance for party1
 const final_balance2 = 250000n; // Ensure this is set to a valid `bigint`

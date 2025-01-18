@@ -137,8 +137,6 @@ const initialize_channel = async (): Promise<Result<string>> => {
             })
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
-            .addSigner(amy_wallet)
-            .addSigner(bob_wallet)
             .complete();
         
         // console.log("tx:" , tx.toJSON());
