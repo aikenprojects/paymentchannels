@@ -61,6 +61,11 @@ console.log("bob Address: " + bob_wallet);
 const bob_utxo = await lucid.utxosAt(bob_wallet);
 console.log("bob Address utxo: ", bob_utxo);
 
+const Actions = {
+    InitialDeposit: 0,
+    CloseChannel: 1,
+} as const;
+
 // channel close
 const channelClose = async (): Promise<Result<string>> => {
     try {
@@ -88,68 +93,26 @@ const channelClose = async (): Promise<Result<string>> => {
             party2,
             balance1,
             balance2,
-            sequenceNumber,
-            settlementRequested,
-            createdSlot,
         ] = currentDatum.fields;
 
-        console.log("Current Sequence Number (from datum):", sequenceNumber);
-        console.log("Current datum time (from datum):", createdSlot);
+        console.log("Current balance1 (from datum):", balance1);
+        console.log("Current balance2(from datum):", balance2);
 
-
-        // Check if settlement has already been requested
-        if (settlementRequested !== 0n) {
-            throw "Settlement has not ady been requested or the channel is already closed";
-        }
-
-        // Update settlementRequested to indicate that settlement has been requested
-        const updatedSettlementRequested = 1n; // Set to 1 to indicate that settlement has been requested
-        console.log("updatedSettlementRequested", updatedSettlementRequested)
-        
-        // Define current time separately
-        const currentTime = Date.now(); 
-        console.log("currentTime", currentTime );
-        
-        // Fetch the parameters from the redeemValidator
-        const Vparams = validator.validator.params;
-        const channel_deadline = Vparams.fields[1];  
-        console.log("deadline", channel_deadline)        
-        
-        // Compare current time with the createdSlot and the timeout period
-        if (BigInt(currentTime) >= channel_deadline) {
-            throw "Timeout has been reached";
-        }
-
-
-        // Create the updated datum marking the channel as closed
-        const updatedDatum = new Constr(0, [
-            party1,
-            party2,
-            balance1,
-            balance2,
-            sequenceNumber + 1n,
-            updatedSettlementRequested,
-            createdSlot,  // Transfer the final balance to party1
-        ]);
-
-        console.log("Updated Datum for settlement: ", updatedDatum);
-
-        const redeemer = Data.to(new Constr(3, []));
-        console.log("Redeemer: " + Data.from(redeemer));
-        console.log("Redeemer: " + redeemer);
+        // Create the CloseChannel redeemer
+        // const redeemer = Data.to(new Constr(1, []));
+        // const redeemer = Data.void();
+        const redeemer = Data.to(BigInt(Actions.CloseChannel));
+        console.log("Redeemer:", redeemer);
 
         // Build the transaction to close the channel and settle funds
         const tx = await lucid
             .newTx() 
             .collectFrom([channel_utxo], redeemer)
             .attach.SpendingValidator(validator.validator)
-
-            .pay.ToAddress(amy_wallet, {lovelace: 300000n})
-            .pay.ToAddress(bob_wallet, {lovelace: 200000n})
+            .pay.ToAddress(amy_wallet, {lovelace: 350000n})
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
-            .validTo(Date.now())
-            .complete({});
+            .complete()
 
         console.log("Tx: " + tx);
      
@@ -173,5 +136,4 @@ const channelClose = async (): Promise<Result<string>> => {
 
 // Test the channelClose function
 let closeResult = await channelClose();
-
 console.log("Realized Tx: " + closeResult.data);

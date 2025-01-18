@@ -1,6 +1,5 @@
 import {generatePrivateKey, paymentCredentialOf, toPublicKey } from "npm:@lucid-evolution/utils";
 import {Lucid, Blockfrost, PROTOCOL_PARAMETERS_DEFAULT} from "npm:@lucid-evolution/lucid";
-import * as CML from "npm:@anastasia-labs/cardano-multiplatform-lib-nodejs";
 import { networkConfig } from "./setting.ts";
 
 const lucid = await Lucid(

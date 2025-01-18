@@ -51,7 +51,7 @@ console.log("bob Address utxo: ", bob_utxo);
 
 
 // Update the Payment Channel
-const update_channel = async (additionalFunds: bigint): Promise<Result<string>> => {
+const update_channel = async (newBalance1: bigint, newBalance2:bigint, currentSequenceNumber:bigint ): Promise<Result<string>> => {
     try {
 
         if (!lucid) throw "Uninitialized Lucid";
@@ -86,37 +86,19 @@ const update_channel = async (additionalFunds: bigint): Promise<Result<string>> 
         
         console.log("Current Sequence Number (from datum):", sequenceNumber);
 
-        // Increment the sequence number by 1 for the update
-        const newSequenceNumber = sequenceNumber + 1n;
-        console.log("Updated Sequence Number:", newSequenceNumber);
-
-        // Ensure the sequence number is increasing
-        if (newSequenceNumber <= sequenceNumber) {
-            throw "The sequence number must increase";
-        }
         
-       // Adjust balance1 by additionalFunds
-       const newBalance1 = BigInt(balance1) + additionalFunds;
-       console.log("newBalance1:", newBalance1);
-
-       // Keep balance2 the same, since it's 0 and there is no need to adjust it
-       const newBalance2 = BigInt(balance2);
-       console.log("newBalance2:", newBalance2);
-
-       if (newBalance1 + newBalance2 !== BigInt(balance1) + BigInt(balance2) + additionalFunds) {
-        throw "The total balance must be preserved";
-    }
-
-
-
-        if (newBalance1 < 0n || newBalance2 < 0n) {
-            throw "Balances cannot be negative";
-        }
-
-
-        if (settlementRequested !== 0n) {
-            throw "Settlement has already been requested";
-        }
+        const newBalance1 = 150000n; // Example: Reducing Amy's balance
+        const newBalance2 = 300000n; // Example: Increasing Bob's balance
+ 
+        
+        // Create the redeemer for UpdateTransaction
+        const redeemer = Data.to(
+            new Constr(1, [
+                newBalance1,
+                newBalance2,
+                sequenceNumber + 1n
+            ])
+        );
 
         // Create the updated datum
         const updatedDatum = new Constr(0, [
@@ -124,7 +106,7 @@ const update_channel = async (additionalFunds: bigint): Promise<Result<string>> 
             party2,
             newBalance1,
             newBalance2,
-            newSequenceNumber, // Increment the sequence number
+            sequenceNumber + 1n, // Increment the sequence number
             settlementRequested,
             createdSlot,
         ]);
@@ -134,13 +116,13 @@ const update_channel = async (additionalFunds: bigint): Promise<Result<string>> 
         const tx = await lucid
             .newTx()
 
-            .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
-
-                lovelace: channel_utxo.assets.lovelace + additionalFunds, // Adjust total lovelace
-            })
-            // .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
-            //     lovelace: 150000n,
-            // })
+            .collectFrom([channel_utxo], redeemer) // Spend the current UTXO with the redeemer
+            .attach.SpendingValidator(validator.validator)
+            .pay.ToContract(
+                channelAddress,
+                { kind: "inline", value:  Data.to(updatedDatum) },
+                { lovelace: newBalance1 + newBalance2 } // Total amount stays the same
+            )
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
             .complete();
