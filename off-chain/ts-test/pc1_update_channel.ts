@@ -1,29 +1,17 @@
 import {
-    applyDoubleCborEncoding,
+    
     Blockfrost,
     Constr,
-    Credential,
-    credentialToAddress,
     Data,
-    fromHex,
-    fromText,
-    generatePrivateKey,
     Lucid,
-    LucidEvolution,
     PROTOCOL_PARAMETERS_DEFAULT,
-    SpendingValidator,
-    validatorToAddress,
-    
 } from "npm:@lucid-evolution/lucid";
-import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
-
 
 import amy_skey from "./amySkey.json" with { type: "json" };
 import bob_skey from "./bobskey.json" with { type: "json" };
+import {validator, channelAddress} from "./plutus_validator.ts";
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
-
-const project_path = networkConfig.workspacePath;
 
 
 const lucid = await Lucid(
@@ -65,17 +53,23 @@ console.log("bob Address utxo: ", bob_utxo);
 // Update the Payment Channel
 const update_channel = async (additionalFunds: bigint): Promise<Result<string>> => {
     try {
+
+        if (!lucid) throw "Uninitialized Lucid";
+        if (!amy_wallet) throw "Undefined Amy's address";
+        if (!bob_wallet) throw "Undefined Bob's address";
+        if (!channelAddress) throw "Undefined script address";
+        
         // Fetch UTXOs at the channel address
 
-        const utxos = await lucid.utxosAt("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s");
+        const utxos = await lucid.utxosAt(channelAddress);
 
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
-        const utxo = utxos[0]; // Use the first UTXO
-        console.log("Channel UTXO at first index: ", utxo);
+        const channel_utxo = utxos[utxos.length - 1]; // Use the first UTXO
+        console.log("Channel UTXO at first index: ", channel_utxo);
 
         // Retrieve the current state from the UTXO's datum
-        const currentDatum = Data.from<Constr>(utxo.datum);
+        const currentDatum = Data.from<Constr>(channel_utxo.datum);
         console.log("Current Datum: ", currentDatum);
 
         const [
@@ -140,15 +134,27 @@ const update_channel = async (additionalFunds: bigint): Promise<Result<string>> 
         const tx = await lucid
             .newTx()
 
-            .pay.ToContract("addr_test1zz4cxtq805hmvuvg2hzpt6ptwfu9q5vrjav9lev6kjrv7hux9fau0z909xfj2r6l93kr275kjsnczc2emzcdzkcs8zkq47n69s", { kind: "inline", value: Data.to(updatedDatum) }, {
+            .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
 
-                lovelace: utxo.assets.lovelace + additionalFunds, // Adjust total lovelace
+                lovelace: channel_utxo.assets.lovelace + additionalFunds, // Adjust total lovelace
             })
+            // .pay.ToContract(channelAddress, { kind: "inline", value: Data.to(updatedDatum) }, {
+            //     lovelace: 150000n,
+            // })
+            .addSigner(amy_wallet)
+            .addSigner(bob_wallet)
             .complete();
+        
+        // console.log("tx:" , tx.toJSON());
+        
 
-        // Sign and submit the transaction
-        const signedTx = await tx.sign.withWallet().complete();
-        console.log("Signed update transaction:", signedTx);
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
+        // console.log("witness set:", bobSignedWitness);
+
+        // Assemble the transaction with the collected witnesses
+        const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
+        
 
         const txHash = await signedTx.submit();
 
@@ -162,5 +168,5 @@ const update_channel = async (additionalFunds: bigint): Promise<Result<string>> 
 };
 
 // Test the update_channel function
-let updateResult = await update_channel(250000n);
+let updateResult = await update_channel(150000n);
 console.log("Update Result: ", updateResult);

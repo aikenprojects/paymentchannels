@@ -3,13 +3,8 @@ import {
     Blockfrost,
     Constr,
     Credential,
-    credentialToAddress,
     Data,
-    fromHex,
-    fromText,
-    generatePrivateKey,
     Lucid,
-    LucidEvolution,
     PROTOCOL_PARAMETERS_DEFAULT,
     SpendingValidator,
     validatorToAddress,
@@ -18,15 +13,12 @@ import {
 
     
 } from "npm:@lucid-evolution/lucid";
-import * as CML from "@anastasia-labs/cardano-multiplatform-lib-nodejs";
 
 import amy_skey from "./amySkey.json" with { type: "json" };
 import bob_skey from "./bobskey.json" with { type: "json" };
+import {validator, channelAddress} from "./plutus_validator.ts";
 import { networkConfig } from "./setting.ts";
 import { Result } from "./types.ts";
-
-const project_path = networkConfig.workspacePath;
-
 
 const lucid = await Lucid(
     new Blockfrost(
@@ -41,13 +33,6 @@ const lucid = await Lucid(
 // console.log("BlockfrostKEY: " + networkConfig.blockfrostAPIkey);
 // console.log("BlockfrostURL: " + networkConfig.blockfrostAPI);
 
-const channelPaymentCredential: Credential = {
-    type: "Key",
-    hash: "862a7bc788af2993250f5f2c6c357a969427816159d8b0d15b1038ac"  //taken from cardano-cli generated verification key hash
-  };
-
-
-
 //part 1 credentials
 const amySigningkey = amy_skey.ed25519_sk;
 console.log("amy sk: " + amySigningkey);
@@ -55,11 +40,9 @@ console.log("amy sk: " + amySigningkey);
 const amyvkey = toPublicKey(amySigningkey);
 console.log("amy vk: " + amyvkey);
 
-
 lucid.selectWallet.fromPrivateKey(amySigningkey);
 const amy_wallet = await lucid.wallet().address();
 console.log("Address: " + amy_wallet);
-
 
 const amy_utxo = await lucid.utxosAt(amy_wallet);
 console.log("Amy Address utxo: ", amy_utxo);
@@ -68,10 +51,8 @@ console.log("Amy Address utxo: ", amy_utxo);
 const bobSigningkey = bob_skey.ed25519_sk;
 console.log("bob sk: " + bobSigningkey);
 
-
 const bobvkey = toPublicKey(bobSigningkey);
 console.log("amy vk: " + bobvkey);
-
 
 lucid.selectWallet.fromPrivateKey(bobSigningkey);
 const bob_wallet = await lucid.wallet().address();
@@ -80,84 +61,24 @@ console.log("bob Address: " + bob_wallet);
 const bob_utxo = await lucid.utxosAt(bob_wallet);
 console.log("bob Address utxo: ", bob_utxo);
 
-// // // // // read validator from blueprint json file created with aiken
-const validator = await readValidator();
-
-async function readValidator(): Promise<SpendingValidator> {
-
-  const raw_validator = JSON.parse(await Deno.readTextFile(networkConfig.workspacePath+"/plutus.json")).validators[0];
-
-  const redeem = raw_validator.redeemer;
-    //   console.log("extracted reedemer", redeem)
-
-    const currentTime = new Date(); 
-    console.log("Current time: " + currentTime.toLocaleString());
-
-
-    // Add 5 days to current time (1 days = 5 * 24 * 60 * 60 * 1000 milliseconds)
-    const deadlineTime = new Date(currentTime.getTime() + 1 * 24 * 60 * 60 * 1000);
-
-
-    // // Print the deadline in human-readable format
-    // console.log("Deadline time (5 days from now): " + deadlineTime.toLocaleString());
-
-  // Validator Parameters
-  const paymentChannelParams = {
-    minAmount: 1000000n,     // Example minimum amount 
-    Slot: deadlineTime,             // Example timeout in slots
-  };
-  
-  // Helper function to encode parameters into Plutus Data
-  const encodeParams = (params) => {
-    return new Constr(0, [params.minAmount, params.Slot]);
-  };
-
-  // Applying Parameters to the Validator
-  const encodedParams = encodeParams(paymentChannelParams);
-//   console.log("encoded params:", encodedParams);
-
-  return { 
-    validator: {
-        type: "PlutusV3",
-        script: applyDoubleCborEncoding(raw_validator.compiledCode),
-        params: encodedParams,
-    },
-    redeemValidator: { 
-        type: "PlutusV3",
-        script: redeem,
-        // params: encodedParams,// Parameters}
-    }
-  };
-}
-// console.log("Validator:", validator.validator);
-
-const channelAddress = validatorToAddress(
-    networkConfig.network,
-    validator.validator,
-
-    channelPaymentCredential,
-
-);
-console.log("Validator Address: " + channelAddress);
-
 // channel close
 const channelClose = async (): Promise<Result<string>> => {
     try {
+      if (!lucid) throw "Uninitialized Lucid";
+      if (!amy_wallet) throw "Undefined Amy's address";
+      if (!bob_wallet) throw "Undefined Bob's address";
+      if (!channelAddress) throw "Undefined script address";
+      
+      
         // Fetch UTXOs at the channel address
         const utxos = await lucid.utxosAt(channelAddress);
         console.log("all channel utxos", utxos)
         if (utxos.length === 0) throw "No UTXOs found at the channel address";
 
-        const channel_utxo = utxos[2]; // Use the first UTXO
+        const channel_utxo = utxos[utxos.length - 1]; // Use the first UTXO
         console.log("Channel UTXO at first index: ", channel_utxo);
 
-        // const channel_utxo = utxos.find((utxo) => {
-        //     if (utxo.datum) {
-        //       const datum = Data.from(utxo.datum, DatumType);
-        //       return datum.owner === publicKeyHash;
-        //     }
-        //   });
-
+     
         // Retrieve the current state from the UTXO's datum
         const currentDatum = Data.from<Constr>(channel_utxo.datum);
         console.log("Current Datum: ", currentDatum);
@@ -173,7 +94,7 @@ const channelClose = async (): Promise<Result<string>> => {
         ] = currentDatum.fields;
 
         console.log("Current Sequence Number (from datum):", sequenceNumber);
-        console.log("Current datum time (from datum):", sequenceNumber);
+        console.log("Current datum time (from datum):", createdSlot);
 
 
         // Check if settlement has already been requested
@@ -186,7 +107,7 @@ const channelClose = async (): Promise<Result<string>> => {
         console.log("updatedSettlementRequested", updatedSettlementRequested)
         
         // Define current time separately
-        const currentTime = new Date(); 
+        const currentTime = Date.now(); 
         console.log("currentTime", currentTime );
         
         // Fetch the parameters from the redeemValidator
@@ -194,17 +115,16 @@ const channelClose = async (): Promise<Result<string>> => {
         const channel_deadline = Vparams.fields[1];  
         console.log("deadline", channel_deadline)        
         
-        // // Compare current time with the createdSlot and the timeout period
-        // if (currentTime >= channel_deadline) {
-        //     throw "Timeout has been reached";
-        // }
+        // Compare current time with the createdSlot and the timeout period
+        if (BigInt(currentTime) >= channel_deadline) {
+            throw "Timeout has been reached";
+        }
 
 
         // Create the updated datum marking the channel as closed
         const updatedDatum = new Constr(0, [
             party1,
             party2,
-
             balance1,
             balance2,
             sequenceNumber + 1n,
@@ -214,7 +134,6 @@ const channelClose = async (): Promise<Result<string>> => {
 
         console.log("Updated Datum for settlement: ", updatedDatum);
 
-                
         const redeemer = Data.to(new Constr(3, []));
         console.log("Redeemer: " + Data.from(redeemer));
         console.log("Redeemer: " + redeemer);
@@ -226,21 +145,21 @@ const channelClose = async (): Promise<Result<string>> => {
             .collectFrom([channel_utxo], redeemer)
             .attach.SpendingValidator(validator.validator)
 
-            .pay.ToAddress(amy_wallet, {lovelace: 2000000n})
-            .pay.ToAddress(bob_wallet, {lovelace: 3000000n})
+            .pay.ToAddress(amy_wallet, {lovelace: 300000n})
+            .pay.ToAddress(bob_wallet, {lovelace: 200000n})
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
-            // .addSigner
-
-            // .addSigner(bob_wallet)
             .validTo(Date.now())
             .complete({});
 
         console.log("Tx: " + tx);
      
-        // Sign and submit the transaction
-        const signedTx = await tx.sign.withWallet().complete();
-        console.log("Signed channel close transaction:", signedTx);
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
+        // console.log("witness set:", bobSignedWitness);
+
+        // Assemble the transaction with the collected witnesses
+        const signedTx = await tx.assemble([amySignedWitness, bobSignedWitness]).complete();
 
         const txHash = await signedTx.submit();
 
