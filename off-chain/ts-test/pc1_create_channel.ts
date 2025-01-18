@@ -137,8 +137,6 @@ const initialize_channel = async (): Promise<Result<string>> => {
             })
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
-            .addSigner(amy_wallet)
-            .addSigner(bob_wallet)
             .complete();
         
         // console.log("tx:" , tx.toJSON());
@@ -166,8 +164,6 @@ const initialize_channel = async (): Promise<Result<string>> => {
 
 let txHash = await initialize_channel();
 console.log("Realized Tx: " + txHash.data);
-
-
 
 const cam_utxo = await lucid.utxosAt(channelAddress);
 console.log("campaign Address utxo: ", cam_utxo);
