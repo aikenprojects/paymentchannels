@@ -12,7 +12,7 @@ const project_path = networkConfig.workspacePath;
 
 const channelPaymentCredential: Credential = {
     type: "Key",
-    hash: "f5ace57d793e03a280d2ca6f56617d7e863be809eea3a760a7c83711"  //taken from cardano-cli generated verification key hash
+    hash: "8aeb58bb51435ccac7e66cc263b18da8af7c5429c1645220c542ce17"  //taken from cardano-cli generated verification key hash
   };
 
   // channel keys:

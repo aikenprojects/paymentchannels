@@ -26,7 +26,7 @@ pub type ChannelDatum {
   balance1: Int,
   balance2: Int,
   sequence_number: Int,
-  settlement_requested: Bool,
+  settlement_requested: Int,
   created_time: Int,
 }
 
@@ -39,7 +39,7 @@ validator paymentchannel(params: PaymentChannelParams) {
   spend(
     datum: Option<ChannelDatum>,
     redeemer: Action,
-    _target: OutputReference,
+    target: OutputReference,
     tx_info: Transaction,
   ) {
     expect Some(datum) = datum
@@ -52,6 +52,7 @@ validator paymentchannel(params: PaymentChannelParams) {
           new_balance2,
           sequence_number,
           tx_info,
+          target,
         )
       RequestSettlement { final_balance1, final_balance2, sequence_number } ->
         validate_settlement(
@@ -83,11 +84,32 @@ fn validate_initial_deposit(
     params.deadline > datum.created_time,
     //current time should be equal to the data creation time (take only one)
     // Verify settlement not requested
-    !datum.settlement_requested,
+    datum.settlement_requested == 0,
     // Verify sequence starts at 0
     datum.sequence_number == 0,
   }
 }
+
+// fn validate_update(
+//   datum: ChannelDatum,
+//   new_balance1: Int,
+//   new_balance2: Int,
+//   sequence_number: Int,
+//   tx_info: Transaction,
+// ) -> Bool {
+//   and {
+//     // Verify the update is signed by both parties
+//     must_be_signed_by(tx_info, [datum.party1, datum.party2]),
+//     // Verify sequence number increases
+//     sequence_number > datum.sequence_number,
+//     // Verify balances are non-negative
+//     new_balance1 >= 0 && new_balance2 >= 0,
+//     // Verify total balance is preserved
+//     new_balance1 + new_balance2 == datum.balance1 + datum.balance2,
+//     // Verify settlement not requested
+//     !datum.settlement_requested,
+//   }
+// }
 
 fn validate_update(
   datum: ChannelDatum,
@@ -95,7 +117,17 @@ fn validate_update(
   new_balance2: Int,
   sequence_number: Int,
   tx_info: Transaction,
+  current_output_ref: OutputReference,
 ) -> Bool {
+  // Get the script address and input value
+  let current_input =
+    tx_info.inputs
+      |> list.find(fn(input) { input.output_reference == current_output_ref })
+  expect Some(found_input) = current_input
+  let script_address = found_input.output.address
+  // Find the new output at the script address
+  let new_script_output =
+    list.find(tx_info.outputs, fn(output) { output.address == script_address })
   and {
     // Verify the update is signed by both parties
     must_be_signed_by(tx_info, [datum.party1, datum.party2]),
@@ -103,10 +135,23 @@ fn validate_update(
     sequence_number > datum.sequence_number,
     // Verify balances are non-negative
     new_balance1 >= 0 && new_balance2 >= 0,
-    // Verify total balance is preserved
-    new_balance1 + new_balance2 == datum.balance1 + datum.balance2,
+    // Modified balance preservation check
+    when new_script_output is {
+      Some(output) -> {
+        let new_total = new_balance1 + new_balance2
+        let current_total = datum.balance1 + datum.balance2
+        and {
+          // Verify the new output value matches the sum of new balances
+          output.value == from_lovelace(new_total),
+          // Allow new total to be greater than or equal to current total
+          // This allows for additional deposits while preventing withdrawals
+          new_total > current_total,
+        }
+      }
+      None -> False
+    },
     // Verify settlement not requested
-    !datum.settlement_requested,
+    datum.settlement_requested == 0,
   }
 }
 
@@ -129,7 +174,7 @@ fn validate_settlement(
     final_balance1 == datum.balance1,
     final_balance2 == datum.balance2,
     // Verify settlement not already requested
-    !datum.settlement_requested,
+    datum.settlement_requested == 0,
   }
 }
 
@@ -140,7 +185,7 @@ fn validate_close(
 ) -> Bool {
   and {
     // Can only close if settlement was requested or timeout reached
-    datum.settlement_requested || must_happen_before(
+    datum.settlement_requested > 0 || must_happen_before(
       tx_info.validity_range,
       params.deadline,
     ),
