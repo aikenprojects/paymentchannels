@@ -91,10 +91,8 @@ const channelClose = async (): Promise<Result<string>> => {
         console.log("Current Sequence Number (from datum):", sequenceNumber);
         console.log("Current datum time (from datum):", createdSlot);
 
-        // Check if settlement has already been requested
-        if (settlementRequested !== 0n) {
-            throw "Settlement has not ady been requested or the channel is already closed";
-        }
+
+      
 
         // Update settlementRequested to indicate that settlement has been requested
         const updatedSettlementRequested = 1n; // Set to 1 to indicate that settlement has been requested
@@ -120,7 +118,7 @@ const channelClose = async (): Promise<Result<string>> => {
             party2,
             balance1,
             balance2,
-            sequenceNumber + 1n,
+            sequenceNumber,
             updatedSettlementRequested,
             createdSlot, // Transfer the final balance to party1
         ]);
@@ -135,16 +133,15 @@ const channelClose = async (): Promise<Result<string>> => {
         // Build the transaction to close the channel and settle funds
         const tx = await lucid
             .newTx()
-            .collectFrom([utxos[0], utxos[1], utxos[2]], redeemer)
+            .collectFrom([channel_utxo], redeemer)
             .attach.SpendingValidator(validator.validator)
-            .pay.ToAddress(amy_wallet, {
-                lovelace: BigInt(BigInt(channel_utxo.assets.lovelace)),
-            })
-            // .pay.ToAddress(bob_wallet, { lovelace: balance1 })
+
+            .pay.ToAddress(amy_wallet, {lovelace: channel_utxo.assets.lovelace})
+            // .pay.ToAddress(bob_wallet, {lovelace: 200000n})
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
-            // .validTo(Date.now())
-            .validFrom(Date.now() - 10000)
+            .validTo(Date.now() + 100000)
+            .validFrom(Date.now() - 100000)
             // Blocktime
             .complete({});
 

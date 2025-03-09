@@ -73,8 +73,10 @@ const validate_settlement = async (
         console.log("Type of storedBalance1:", typeof storedBalance1);
         console.log("Type of storedBalance2:", typeof storedBalance2);
 
-        console.log("final balance:", final_balance1);
-        console.log("Final balance 2:", final_balance2);
+        console.log("Balance 1 :", storedBalance1, final_balance1);
+        console.log("Balance2:",  storedBalance2, final_balance2);
+
+
 
         // const storedBalance1BigInt = BigInt(storedBalance1);
         // const storedBalance2BigInt = BigInt(storedBalance2);
@@ -93,13 +95,13 @@ const validate_settlement = async (
 
         // 5. Update settlement requested flag and prepare the updated datum
         const updatedDatum = new Constr(0, [
-            currentDatum.fields[0], // party1's
-            currentDatum.fields[1], // party2's
-            final_balance1 + storedBalance1, // final balanceP1
-            final_balance2 + storedBalance2, // final balanceP2
-            currentDatum.fields[4] + 1n,
-            settlementRequested,
-            currentDatum.fields[6],
+            currentDatum.fields[0], // party1's 
+            currentDatum.fields[1], // party2's 
+            final_balance1, // final balanceP1
+            final_balance2, // final balanceP2
+            currentDatum.fields[4],
+            1n,
+            currentDatum.fields[6], 
         ]);
         console.log("Updated Datum for Settlement: ", updatedDatum);
 
@@ -140,8 +142,9 @@ const validate_settlement = async (
     }
 };
 
-const final_balance1 = 350000n; // final balance for party1
-const final_balance2 = 250000n; // Ensure this is set to a valid `bigint`
+const final_balance1 = 5150000n; // final balance for party1
+const final_balance2 = 3000000n; // Ensure this is set to a valid `bigint`
+
 
 let settlementResult = await validate_settlement(
     final_balance1,
