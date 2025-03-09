@@ -23,8 +23,8 @@ pub type ChannelDatum {
 ///  3 -> Initiate Dispute
 ///  4 -> Resolve Dispute
 ///  5 -> Close Channel
-///  6 -> Timeout
-///  7 -> Abort
+///  6 -> Timeout  // 
+///  7 -> Abort // Platform 
 pub type Action =
   Int
 
