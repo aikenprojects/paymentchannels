@@ -4,6 +4,7 @@ import {
     Data,
     Lucid,
     PROTOCOL_PARAMETERS_DEFAULT,
+    paymentCredentialOf,
 } from "npm:@lucid-evolution/lucid";
 
 import amy_skey from "./amySkey.json" with { type: "json" };
@@ -60,83 +61,56 @@ const initialize_channel = async (): Promise<Result<string>> => {
         if (!bob_wallet) throw "Undefined Bob's address";
         if (!channelAddress) throw "Undefined script address";
 
-        // Fetch the parameters from the Validator
-        const validParams = validator.validator.params;
-        // console.log("Redeem Validator Params: ", redeemParams.fields[0])
-        const minAmount = validParams.fields[0];
-        console.log("min amount", minAmount);
-        // const deadline = validParams.fields[1];
-
         // Fetch UTxOs at the channel address
         const utxos = await lucid.utxosAt(channelAddress);
         console.log("Current utxo: ", utxos);
 
-        let currentSequenceNumber = BigInt(0n); // Default to 0 if no UTxOs are present
 
-        if (utxos.length > 0) {
-            // Extract the latest datum from the UTxOs
-            const latestDatum = utxos[0].datum;
-            if (latestDatum) {
-                const parsedDatum = Data.from(latestDatum);
-                currentSequenceNumber = parsedDatum.fields[4]; // Sequence number is the 5th field (0-indexed)
-            }
-        }
 
+        let currentSequenceNumber = 0; // Default to 0 if no UTxOs are present
         console.log("Current sequence number: ", currentSequenceNumber);
-
-        // Increment the sequence number
-
-        const newSequenceNumber = currentSequenceNumber + 1n; //shouldn't it be done in update channel ????
-        const created_slot = Date.now();
+        const created_slot = Date.now()
         console.log("Current time: ", created_slot);
-        const balanceP1 = 200000n; // balance1
+        const balanceP1 = 5000000; // balance1
+        const balanceP2 = 3000000; // balance1
+        console.log("balance1: ", balanceP1, "balance2:", balanceP2);
+        const settlementRequested = 0; // settlement_requested (false)
+        console.log("settlement: ", settlementRequested);
 
-        // const balanceP2 = 0n; // balance2
-        const settlementRequested = 0n; // settlement_requested (false)
 
         // Create datum based on the new ChannelDatum type
         const datum = Data.to(
             new Constr(0, [
-                "5d20782e35c589a11061291fece1acc90f20edf612555382e0b6dc01", // party1's verification key hash (replace with actual key)
-                "5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c", // party2's verification key hash (empty for now)
-                balanceP1, // balance1
-                BigInt(250000n), // balance2
-                BigInt(newSequenceNumber), // sequence_number
-                settlementRequested, // settlement_requested (false initially)
+                paymentCredentialOf(amy_wallet).hash, // party1's verification key hash (replace with actual key)
+                paymentCredentialOf(bob_wallet).hash , // party2's verification key hash (empty for now)
+                BigInt(balanceP1), // balance1
+                BigInt(balanceP2), // balance2
+                BigInt(currentSequenceNumber), // sequence_number
+                BigInt(settlementRequested), // settlement_requested (false initially)
                 BigInt(created_slot), // created_slot (example slot number) //channel creation time
             ]),
         );
         console.log("datum:", datum);
 
-        if (BigInt(balanceP1) < BigInt(minAmount)) {
-            throw "Balance1 is below the minimum amount.";
-        }
-        if (settlementRequested !== 0n) {
-            throw "Settlement has already been requested.";
-        }
-
-        // if (currentSequenceNumber !== 0n) throw "Sequence number is not starting at 0.";
-
+        
+        //tx build
         const tx = await lucid
             .newTx()
             .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
-                lovelace: 200000n,
-            })
-            .pay.ToContract(channelAddress, { kind: "inline", value: datum }, {
-                lovelace: 250000n,
+                lovelace: BigInt(balanceP1) + BigInt(balanceP2),  //1 tx fee 0.178701 ADA
+
             })
             .addSigner(amy_wallet)
             .addSigner(bob_wallet)
             .complete();
 
-        // console.log("tx:" , tx.toJSON());
+        
+        console.log("tx:" , tx.toJSON());
+        
+        //tx signed
+        const amySignedWitness = await tx.partialSign.withPrivateKey(amySigningkey);
+        const bobSignedWitness = await tx.partialSign.withPrivateKey(bobSigningkey);
 
-        const amySignedWitness = await tx.partialSign.withPrivateKey(
-            amySigningkey,
-        );
-        const bobSignedWitness = await tx.partialSign.withPrivateKey(
-            bobSigningkey,
-        );
         // console.log("witness set:", bobSignedWitness);
 
         // Assemble the transaction with the collected witnesses
@@ -145,7 +119,6 @@ const initialize_channel = async (): Promise<Result<string>> => {
 
         const txHash = await signedTx.submit();
 
-        console.log("Payment Channel Initialized!");
         console.log("Payment Channel Initialized! Transaction Hash:", txHash);
 
         return { type: "ok", data: txHash };
@@ -161,3 +134,4 @@ console.log("Realized Tx: " + txHash.data);
 
 // const cam_utxo = await lucid.utxosAt(channelAddress);
 // console.log("campaign Address utxo: ", cam_utxo);
+

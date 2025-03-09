@@ -10,11 +10,11 @@ import { networkConfig } from "./setting.ts";
 const project_path = networkConfig.workspacePath;
 
 const channelPaymentCredential: Credential = {
-  type: "Key",
-  hash: "0eaf8f6279c7c012dee9d24816949a0306861f5322250d8f9fc9c0ac", //taken from cardano-cli generated verification key hash
-};
 
-// channel keys:
+    type: "Key",
+    hash: "8aeb58bb51435ccac7e66cc263b18da8af7c5429c1645220c542ce17"  //taken from cardano-cli generated verification key hash
+  };
+
 
 // private key ed25519_sk1uls3ukk9hjuzgd2drp0unt6r3rf690xkvz2jlmzmr8nh5q6t8wkqfmtfuu
 // public key ed25519_pk1w4h2426w3yq7vsv7l693h6rwhr50ydddt68zutys2pccl7vm42csa3mdjl

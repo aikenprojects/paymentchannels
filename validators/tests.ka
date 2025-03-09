@@ -1,0 +1,220 @@
+use aiken/hash.{Blake2b_224, Hash}
+use aiken/interval.{Finite, IntervalBound, NegInf, PosInf}
+use aiken/transaction.{
+  Input, Output, OutputReference, Transaction, TransactionId, ValidityRange,
+}
+use aiken/transaction/credential.{VerificationKey}
+use channel/types.{Action, ChannelDatum, PaymentChannelParams}
+
+test validator_accepts_valid_initial_deposit() {
+  let party1: Hash<Blake2b_224, VerificationKey> =
+    #"1b793c0ff620c688d40ca80fd6af8d503543ca249f6f8a26e25362af"
+  let party2: Hash<Blake2b_224, VerificationKey> =
+    #"5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c"
+
+  let datum =
+    ChannelDatum {
+      party1,
+      party2,
+      balance1: 5000000,
+      balance2: 3000000,
+      sequence_number: 0,
+      settlement_requested: 0,
+      created_time: 1737466963019,
+    }
+
+  let params =
+    PaymentChannelParams { min_amount: 2000000, deadline: 1737466963020 }
+
+  paymentchannel(params)
+    |> validate_initial_deposit(datum, mock_tx(), params)
+}
+
+test validator_rejects_insufficient_initial_deposit() {
+  let party1: Hash<Blake2b_224, VerificationKey> =
+    #"1b793c0ff620c688d40ca80fd6af8d503543ca249f6f8a26e25362af"
+  let party2: Hash<Blake2b_224, VerificationKey> =
+    #"5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c"
+
+  let datum =
+    ChannelDatum {
+      party1,
+      party2,
+      balance1: 1000000,
+      // Less than min_amount
+      balance2: 3000000,
+      sequence_number: 0,
+      settlement_requested: 0,
+      created_time: 1737466963019,
+    }
+
+  let params =
+    PaymentChannelParams { min_amount: 2000000, deadline: 1737466963020 }
+
+  !paymentchannel(params)
+    |> validate_initial_deposit(datum, mock_tx(), params)
+}
+
+test validator_accepts_valid_update() {
+  let party1: Hash<Blake2b_224, VerificationKey> =
+    #"1b793c0ff620c688d40ca80fd6af8d503543ca249f6f8a26e25362af"
+  let party2: Hash<Blake2b_224, VerificationKey> =
+    #"5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c"
+
+  let datum =
+    ChannelDatum {
+      party1,
+      party2,
+      balance1: 5000000,
+      balance2: 3000000,
+      sequence_number: 0,
+      settlement_requested: 0,
+      created_time: 1737466963019,
+    }
+
+  let tx = mock_tx_with_signers([party1, party2])
+  // Test update with additional deposit
+  paymentchannel(params)
+    |> validate_update(datum, 11000000, 3000000, 1, tx, mock_input_ref())
+}
+
+test validator_rejects_update_without_signatures() {
+  let party1: Hash<Blake2b_224, VerificationKey> =
+    #"1b793c0ff620c688d40ca80fd6af8d503543ca249f6f8a26e25362af"
+  let party2: Hash<Blake2b_224, VerificationKey> =
+    #"5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c"
+
+  let datum =
+    ChannelDatum {
+      party1,
+      party2,
+      balance1: 5000000,
+      balance2: 3000000,
+      sequence_number: 0,
+      settlement_requested: 0,
+      created_time: 1737466963019,
+    }
+
+  let tx = mock_tx()
+
+  // No signatures
+  !paymentchannel(params)
+    |> validate_update(datum, 6000000, 2000000, 1, tx, mock_input_ref())
+}
+
+test validator_rejects_update_with_negative_balance() {
+  let party1: Hash<Blake2b_224, VerificationKey> =
+    #"1b793c0ff620c688d40ca80fd6af8d503543ca249f6f8a26e25362af"
+  let party2: Hash<Blake2b_224, VerificationKey> =
+    #"5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c"
+
+  let datum =
+    ChannelDatum {
+      party1,
+      party2,
+      balance1: 5000000,
+      balance2: 3000000,
+      sequence_number: 0,
+      settlement_requested: 0,
+      created_time: 1737466963019,
+    }
+
+  let tx = mock_tx_with_signers([party1, party2])
+
+  !paymentchannel(params)
+    |> validate_update(
+        datum,
+        -1000000,
+        // Negative balance
+        9000000,
+        1,
+        tx,
+        mock_input_ref(),
+      )
+}
+
+test validator_accepts_valid_settlement_request() {
+  let party1: Hash<Blake2b_224, VerificationKey> =
+    #"1b793c0ff620c688d40ca80fd6af8d503543ca249f6f8a26e25362af"
+  let party2: Hash<Blake2b_224, VerificationKey> =
+    #"5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c"
+
+  let datum =
+    ChannelDatum {
+      party1,
+      party2,
+      balance1: 5000000,
+      balance2: 3000000,
+      sequence_number: 1,
+      settlement_requested: 0,
+      created_time: 1737466963019,
+    }
+
+  let tx = mock_tx_with_signers([party1])
+
+  // Only one party needs to sign
+  paymentchannel(params)
+    |> validate_settlement(datum, 5000000, 3000000, 1, tx)
+}
+
+test validator_accepts_valid_close() {
+  let party1: Hash<Blake2b_224, VerificationKey> =
+    #"1b793c0ff620c688d40ca80fd6af8d503543ca249f6f8a26e25362af"
+  let party2: Hash<Blake2b_224, VerificationKey> =
+    #"5a23fe1983b950076613a53b11bc7b393c0897121fd9a4036f80a43c"
+
+  let datum =
+    ChannelDatum {
+      party1,
+      party2,
+      balance1: 5000000,
+      balance2: 3000000,
+      sequence_number: 1,
+      settlement_requested: 1,
+      created_time: 1737466963019,
+    }
+
+  let tx = mock_tx_with_signers([party1, party2])
+
+  paymentchannel(params)
+    |> validate_close(datum, tx, params)
+}
+
+// Helper functions for creating mock transactions and data
+
+fn mock_tx() -> Transaction {
+  Transaction {
+    inputs: [],
+    outputs: [],
+    fee: 0,
+    mint: [],
+    certificates: [],
+    withdrawals: [],
+    validity_range: ValidityRange { lower_bound: NegInf, upper_bound: PosInf },
+    extra_signatories: [],
+    redeemers: [],
+    datums: [],
+    id: TransactionId { hash: #"" },
+  }
+}
+
+fn mock_tx_with_signers(
+  signers: List<Hash<Blake2b_224, VerificationKey>>,
+) -> Transaction {
+  Transaction { ..mock_tx(), extra_signatories: signers }
+}
+
+fn mock_input_ref() -> OutputReference {
+  OutputReference {
+    transaction_id: TransactionId { hash: #"" },
+    output_index: 0,
+  }
+}
+
+fn mock_output(
+  address: Address,
+  value: Value,
+  datum: Option<Hash<Blake2b_224, Data>>,
+) -> Output {
+  Output { address, value, datum, reference_script: None }
+}
